@@ -45,11 +45,6 @@ type
     procedure WriteEnumEpilogue; override;
 
   public
-    constructor Create(const WSDLImporter: IWSDLImporter); override;
-    constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string); override;
-
-    destructor  Destroy; override;
-
     procedure WriteIntfHeader; override;
     procedure WriteIntfFooter; override;
     procedure WriteImplHeader; override;
@@ -77,16 +72,6 @@ const
   PreParamMod: array[PartType] of string = ('',   'const ', 'out ',  'var ', '', '', '');  { Do not localize }
 
 { TWSDLPasWriter }
-
-constructor TWSDLPasWriter.Create(const WSDLImporter: IWSDLImporter);
-begin
-  inherited Create(WSDLImporter);
-end;
-
-destructor TWSDLPasWriter.Destroy;
-begin
-  inherited Destroy;
-end;
 
 function TWSDLPasWriter.IsReservedWord(const Name: DOMString; var NewName: DOMString): Boolean;
 var
@@ -1676,12 +1661,6 @@ begin
   WriteFmt('{$DEFINE WSDLIMP_VER_%d_%d}', [WSDLImpMajVer, WSDLImpMinVer]); { Do not localize }
   WriteStr(sLineBreak);
   Result := True;
-end;
-
-constructor TWSDLPasWriter.CreateFilename(const WSDLImporter: IWSDLImporter;
-  OutFileName: string);
-begin
-    inherited CreateFilename(WSDLImporter, OutFileName);
 end;
 
 end.

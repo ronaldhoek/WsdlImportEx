@@ -310,8 +310,8 @@ type
     procedure WriteEnumPrologue; virtual;
     procedure WriteEnumEpilogue; virtual;
   public
-    constructor Create(const WSDLImporter: IWSDLImporter); virtual;
-    constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string); virtual;
+    constructor Create(const WSDLImporter: IWSDLImporter);
+    constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
 
 
     destructor Destroy; override;

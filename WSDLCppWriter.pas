@@ -43,12 +43,6 @@ type
     procedure WriteTypeNamespace(const TypeNamespace: DOMString; Using: Boolean = False);
     function  Escape(const W: DOMString): DOMString; override;
   public
-    constructor Create(const WSDLImporter: IWSDLImporter); override;
-    constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName: string); override;
-
-    destructor  Destroy; override;
-
-
     procedure WriteIntfHeader; override;
     procedure WriteIntfFooter; override;
     function  WriteSettingsFile: Boolean; override;
@@ -195,22 +189,6 @@ const
                         );
 
 { TWSDLCppWriter }
-
-constructor TWSDLCppWriter.Create(const WSDLImporter: IWSDLImporter);
-begin
-  inherited Create(WSDLImporter);
-end;
-
-constructor TWSDLCppWriter.CreateFilename(const WSDLImporter: IWSDLImporter;
-  OutFileName: string);
-begin
-    inherited CreateFilename(WSDLImporter, OutFileName);
-end;
-
-destructor TWSDLCppWriter.Destroy;
-begin
-  inherited Destroy;
-end;
 
 function TWSDLCppWriter.IsReservedWord(const Name: DOMString; var NewName: DOMString): Boolean;
 var
