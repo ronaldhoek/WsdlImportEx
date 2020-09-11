@@ -223,7 +223,9 @@ type
   TWSDLGenFlags = set of WSDLGenFlags;
 
   { TWSDLWriter }
-  TWSDLWriter = class(TMemoryStream)
+  TWSDLWriter = class
+  private
+    FBuffer: TMemoryStream;
   protected
     FOnWrite: TWriteProc;
     FTempFile: THandleStream; { File stream as virtual memory }
@@ -313,12 +315,10 @@ type
     constructor Create(const WSDLImporter: IWSDLImporter);
     constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
 
-
     destructor Destroy; override;
 
     procedure WriteToFile(FileName: String);
-    procedure SetSize(NewSize: Longint); override;
-    function  Write(const Buffer; Count: Integer): Longint; override;
+    procedure Clear;
 
     function  IntfExt: DOMString; virtual;
     function  HasSource: Boolean; virtual;
@@ -536,6 +536,14 @@ const
   SUnknownValue = '????';
 
 type
+
+  TBailOutMemoryStream = class(TMemoryStream)
+  private
+    FWriter: TWSDLWriter;
+  public
+    constructor Create(Writer: TWSDLWriter);
+    function Write(const Buffer; Count: Integer): Longint; override;
+  end;
 
   { TBaseImporter }
   TWSDLBaseImporter = class(TInterfacedObject)
@@ -1264,6 +1272,51 @@ end;
       THeaderItem(Items[Index]).FMethodList.AddItem(MethName, MethType, Required);
   end;
 
+{ TBailOutMemoryStream }
+
+constructor TBailOutMemoryStream.Create(Writer: TWSDLWriter);
+begin
+  inherited Create;
+  FWriter := Writer;
+end;
+
+function TBailOutMemoryStream.Write(const Buffer; Count: Integer): Longint;
+var
+  H: THandleStream;
+  TempDir: string;
+  C: Integer;
+begin
+  if FWriter.FTempFile = nil then
+    try
+      Result := inherited Write(Buffer, Count);
+      Exit;
+    except
+      { The following logic accomodates cases where we might run out of memory!
+        I don't suspect this code to be activated with the typical WSDL of
+        today but if/when more complex ones (with zillion of types) show up,
+        our goal is to switch to the FileStream at this point }
+      on E: EStreamError do
+      begin
+        SetLength(TempDir, 255);
+        SetLength(TempDir, GetTempPath(255, PChar(TempDir)));
+        SetLength(FWriter.FTempFileName, 255);
+        GetTempFileName(PChar(TempDir), 'w$d1', 0, PChar(FWriter.FTempFileName));
+        SetLength(FWriter.FTempFileName, StrLen(PChar(FWriter.FTempFileName)));
+        H := THandleStream.Create(CreateFile(PChar(FWriter.FTempFileName),
+          GENERIC_READ or GENERIC_WRITE, 0, nil, CREATE_ALWAYS,
+          FILE_ATTRIBUTE_TEMPORARY, 0));
+        Self.Position := 0;
+        C := Self.Size;
+        H.WriteBuffer(Self.Memory^, C);
+        Self.SetSize(0);
+        FWriter.FTempFile := H;
+      end;
+    end;
+  if (FWriter.FTempFile <> nil) then
+    Result := FWriter.FTempFile.Write(Buffer, Count)
+  else
+    Result := 0;
+end;
 
 { TWSDLBaseImporter }
 
@@ -3186,21 +3239,28 @@ end;
 
 { TWSDLWriter }
 
+procedure TWSDLWriter.Clear;
+begin
+  FBuffer.Clear;
+end;
+
 constructor TWSDLWriter.Create(const WSDLImporter: IWSDLImporter);
 begin
-  inherited Create;
-  Init(WSDLImporter, WSDLImporter.OutFile);
+  CreateFilename(WSDLImporter, WSDLImporter.OutFile);
 end;
 
 constructor TWSDLWriter.CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
 begin
   inherited Create;
+  FBuffer := TBailOutMemoryStream.Create(Self);
   Init(WSDLImporter, OutFileName);
 end;
 
 destructor TWSDLWriter.Destroy;
 begin
   FWSDLImporter := nil;
+  FreeAndNil(FBuffer);
+  FreeAndNil(FTempFile);
   inherited Destroy;
 end;
 
@@ -3228,9 +3288,9 @@ begin
   { Write out the data }
 {$IFDEF UNICODE}
   utf8Str := UTF8Encode(Str);
-  Write(Pointer(utf8Str)^, Length(utf8Str));
+  FBuffer.Write(Pointer(utf8Str)^, Length(utf8Str));
 {$ELSE}
-  Write(Pointer(Str)^, Length(Str));
+  FBuffer.Write(Pointer(Str)^, Length(Str));
 {$ENDIF}
 end;
 
@@ -3270,7 +3330,7 @@ begin
   with TStringStream.Create('') do
 {$ENDIF}
   try
-    CopyFrom(Self, 0);
+    CopyFrom(FBuffer, 0);
     Result := DataString;
   finally
     Free;
@@ -3279,9 +3339,9 @@ end;
 
 function TWSDLWriter.DataToUTF8String: UTF8String;
 begin
-  Position := 0;
-  SetLength(Result, Size);
-  Self.Read(Result[1], Length(Result));
+  FBuffer.Position := 0;
+  SetLength(Result, FBuffer.Size);
+  FBuffer.Read(Result[1], Length(Result));
 end;
 
 procedure TWSDLWriter.WriteToFile(FileName: String);
@@ -3298,8 +3358,8 @@ var
     I: Integer;
   begin
     Result := False;
-    P := Self.Memory;
-    for I := 0 to Self.Size-1 do
+    P := FBuffer.Memory;
+    for I := 0 to FBuffer.Size-1 do
     begin
       if ((P^ and $80) <> 0) then
       begin
@@ -3318,67 +3378,16 @@ begin
     if HasHighBit then
     begin
       Bom := TEncoding.UTF8.GetPreamble;
-      Self.Position := 0;
+      FBuffer.Position := 0;
       Write(Bom[0], Length(Bom));
     end;
 {$ENDIF}
-    CopyFrom(Self, 0);
+    CopyFrom(FBuffer, 0);
     if not (wfQuietMode in Global_WSDLGenFlags) then
       WriteFeedback(sFeedbackWrite+sLineBreak, [FileName]);
   finally
     Free;
   end;
-end;
-
-procedure TWSDLWriter.SetSize(NewSize: Longint);
-begin
-  if FTempFile = nil then
-    inherited SetSize(NewSize)
-  else if NewSize = 0 then
-  begin
-    FTempFile.Free;
-    DeleteFile(PChar(FTempFileName));
-    FTempFile := nil;
-    FTempFileName := '';
-  end;
-end;
-
-function TWSDLWriter.Write(const Buffer; Count: Integer): Longint;
-var
-  H: THandleStream;
-  TempDir: string;
-  C: Integer;
-begin
-  if FTempFile = nil then
-    try
-      Result := inherited Write(Buffer, Count);
-      Exit;
-    except
-      { The following logic accomodates cases where we might run out of memory!
-        I don't suspect this code to be activated with the typical WSDL of
-        today but if/when more complex ones (with zillion of types) show up,
-        our goal is to switch to the FileStream at this point }
-      on E: EStreamError do
-      begin
-        SetLength(TempDir, 255);
-        SetLength(TempDir, GetTempPath(255, PChar(TempDir)));
-        SetLength(FTempFileName, 255);
-        GetTempFileName(PChar(TempDir), 'w$d1', 0, PChar(FTempFileName));
-        SetLength(FTempFileName, StrLen(PChar(FTempFileName)));
-        H := THandleStream.Create(CreateFile(PChar(FTempFileName),
-          GENERIC_READ or GENERIC_WRITE, 0, nil, CREATE_ALWAYS,
-          FILE_ATTRIBUTE_TEMPORARY, 0));
-        Self.Position := 0;
-        C := Self.Size;
-        H.WriteBuffer(Self.Memory^, C);
-        Self.SetSize(0);
-        FTempFile := H;
-      end;
-    end;
-  if (FTempFile <> nil) then
-    Result := FTempFile.Write(Buffer, Count)
-  else
-    Result := 0;
 end;
 
 procedure TWSDLImporter.MarkTypes;
@@ -4509,26 +4518,26 @@ begin
 
   if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
   begin
-    WriteIntfHeader;
-    WriteForwards;
+    WriteIntfHeader; // Header 'intf' section (needed for each file)
+    WriteForwards; // Forwards - namespace/file specific
   end;
 
-  WriteTypes;
-  WriteInterfaces;
+  WriteTypes;      // Type - namespace/file specific
+  WriteInterfaces; // Interfaces - namespace/file specific
 
   if not HasSource then
   begin
     if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
     begin
-      WriteImplHeader;
-      WriteImplementations;
-      WriteRegCalls;
+      WriteImplHeader;      // Header 'impl' section (needed for each file)
+      WriteImplementations; // Implementations - namespace/file specific
+      WriteRegCalls;        // Registrations calls - namespace/file specific
     end;
   end;
 
   if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
   begin
-    WriteIntfFooter;
+    WriteIntfFooter; // Header (needed for each file)
   end;
 end;
 
