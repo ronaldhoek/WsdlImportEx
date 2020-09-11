@@ -9,6 +9,8 @@
 
 unit WSDLPasWriter;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 uses
@@ -1630,10 +1632,18 @@ begin
     for I := 1 to Length(S) do
     begin
       LastUpper := NowUpper;
+    {$IFDEF SUPPORTS_SIMPLE_TYPE_HELPERS}
       NowUpper := S[I].IsUpper;
+    {$ELSE}
+      NowUpper := IsUpper(S[I]);
+    {$ENDIF}
       if (I > 1) and NowUpper and (not LastUpper) then
         sb.Append('_');   { Do not localize }
+    {$IFDEF SUPPORTS_SIMPLE_TYPE_HELPERS}
       sb.Append(S[I].ToUpper);
+    {$ELSE}
+      sb.Append(ToUpper(S[I]));
+    {$ENDIF}
     end;
     Result := sb.ToString;
   finally

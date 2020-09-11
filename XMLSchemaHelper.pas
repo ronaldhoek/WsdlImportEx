@@ -9,6 +9,8 @@
 
 unit XMLSchemaHelper;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 {$DEFINE SAFE_TYPE_ACCESS}

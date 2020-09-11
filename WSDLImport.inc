@@ -1,0 +1,37 @@
+{*******************************************************}
+{                                                       }
+{           CodeGear Delphi Runtime Library             }
+{ Copyright(c) 2012-2017 Embarcadero Technologies, Inc. }
+{              All rights reserved                      }
+{                                                       }
+{*******************************************************}
+
+{$IFDEF CONDITIONALEXPRESSIONS}
+  {$IF CompilerVersion >= 24.0}
+    {$LEGACYIFEND ON}
+  {$IFEND}
+  {$IF CompilerVersion >= 18.5}
+    {$DEFINE D2007_OR_UP}
+  {$IFEND}
+  {$IF CompilerVersion >= 19.0}
+    {$DEFINE D2007_NET_OR_UP}
+  {$IFEND}
+  {$IF CompilerVersion >= 20.0}
+    {$DEFINE D2009_OR_UP}
+  {$IFEND}
+  {$IF CompilerVersion >= 22.0}
+    {$DEFINE DXE_OR_UP}
+  {$IFEND}
+  {$IF CompilerVersion >= 30.0}
+    {$DEFINE D10_OR_UP}
+  {$IFEND}
+{$ENDIF}
+
+{$IFDEF DXE_OR_UP}
+  {$DEFINE SUPPORTS_REC_TYPE_HELPERS}
+{$ENDIF}
+
+{$IFDEF D10_OR_UP}
+  {$DEFINE SUPPORTS_SIMPLE_TYPE_HELPERS}
+  {$DEFINE SUPPORTS_MSXMLDOM_FACTORY}
+{$ENDIF}

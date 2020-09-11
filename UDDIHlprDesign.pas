@@ -10,6 +10,8 @@
 
 unit UDDIHlprDesign;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 uses

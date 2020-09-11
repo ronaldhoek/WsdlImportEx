@@ -9,9 +9,7 @@
 
 unit WSDLImpConst;
 
-{$IFNDEF VER150}
-{$INCLUDE 'CompVer.inc'}
-{$ENDIF}
+{$INCLUDE 'WSDLImport.inc'}
 
 interface
 

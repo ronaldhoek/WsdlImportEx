@@ -10,6 +10,8 @@
 
 unit WSDLCppWriter;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 uses

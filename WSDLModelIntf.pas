@@ -9,6 +9,8 @@
 
 unit WSDLModelIntf;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 uses

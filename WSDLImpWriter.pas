@@ -10,9 +10,7 @@
 
 unit WSDLImpWriter;
 
-{$IFNDEF VER150}
-{$INCLUDE 'CompVer.inc'}
-{$ENDIF}
+{$INCLUDE 'WSDLImport.inc'}
 
 { Generates an .XML file with information about XML Schema }
 {$DEFINE SHOW_XML_INFO}
@@ -528,8 +526,8 @@ const
   NoYes: array[Boolean] of string = ('No', 'Yes');    { do not localize }
   sMethodNotImplemented = 'Method not implemented';   { do not localize }
 
-{ Moved to SOAPConst.pas for Highlander }
-{$IFNDEF HIGHLANDER_UP}
+{ Moved to SOAPConst.pas for Delphi2007.NET }
+{$IFNDEF D2007_NET_OR_UP}
   SOptional = 'optional';                                  { do not localize }
   SSoapNillable = 'nillable';                              { do not localize }
   SElemForm = 'form';                                      { do not localize }
@@ -4432,7 +4430,7 @@ procedure TWSDLWriter.WriteComplexClassInfo(const WSDLType: IWSDLType);
     end;
   end;
 
-{$IFNDEF SPACELY_UP}
+{$IFNDEF D2007_OR_UP}
 { This string cannot be introduced in the resource string for the hotfix.
   Remedy after the hotfix }
 const
@@ -4948,7 +4946,7 @@ procedure TWSDLWriter.WriteDebug;
     end;
   end;
 
-{$IFNDEF SPACELY_UP}
+{$IFNDEF D2007_OR_UP}
  { These constants cannot be introduced to the resource string for the HOTFIX
    since we won't be relocalizing for the HOTFIX.
    Remedy after HOTFIX }
@@ -5648,7 +5646,7 @@ begin
     { Here map string type according to user's choice }
     if (ATypeInfo <> nil) and SameTypeInfo(TypeInfo(System.AnsiString), ATypeInfo) then
     begin
-{$IFNDEF TIBURON_UP}
+{$IFNDEF D2009_OR_UP}
       if (wfMapStringsToWideStrings in Global_WSDLGenFlags) then
       begin
         ATypeInfo := TypeInfo(System.WideString);
@@ -7391,7 +7389,7 @@ begin
 {$ENDIF}
 end;
 
-{$IFNDEF SPACELY_UP}
+{$IFNDEF D2007_OR_UP}
 var
   _dummystr : string = sCircularTypeLink;
 {$ENDIF}
@@ -8315,7 +8313,13 @@ initialization
   WSDLImpDotSym := TMemIniFile.Create(GetSymFileName);
   ExcludedFromRenameList := TStringList.Create;
   LoadExcludeFromRenameNamesFromDotSym;
+
+{$IFDEF SUPPORTS_MSXMLDOM_FACTORY}
   Xml.Win.msxmldom.MSXMLDOMDocumentFactory.AddDOMProperty('ProhibitDTD', false);
+{$ELSE}
+  MSXML6_ProhibitDTD := False;
+{$ENDIF}
+
 finalization
   ExcludedFromRenameList.Free;
   WSDLImpDotSym.Free;

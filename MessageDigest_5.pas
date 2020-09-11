@@ -13,6 +13,8 @@
 {*******************************************************}
 unit MessageDigest_5;
 
+{$INCLUDE 'WSDLImport.inc'}
+
 interface
 
 uses Types;
