@@ -115,11 +115,11 @@ type
   TWSDLWriterClass = class of TWSDLWriter;
 const
   bDirectWrite: boolean = true;
+  bWriteFilePerNamespace: boolean = true;
 var
   WriterClass: TWSDLWriterClass;
   Writer: TWSDLWriter;
   Importer: IWSDLImporter;
-  Ext: WideString;
   Flag: TImporterFlags;
 begin
   { About to import/read }
@@ -169,16 +169,14 @@ begin
     if Writer.HasSource then
       Writer.SetRelHeaderDir(RelHdrDir);
 
+    { Create a file per namespace }
+    Writer.SetFilePerNamespace(bWriteFilePerNamespace);
+
     { Write interface to stream}
     Writer.WriteIntf;
 
     { Write stream to disk }
-    if Writer.HasSource then
-      Ext := Writer.IntfExt
-    else
-      Ext := Writer.SourceExt;
-    OutFile := ChangeFileExt(Writer.OutFile, Ext);
-    Writer.WriteToFile(Directory + RelHdrDir + OutFile);
+    Writer.WriteToFile(Directory + RelHdrDir, 0);
 
     if (Writer.HasSource) then
     begin
@@ -187,15 +185,14 @@ begin
       Writer.WriteSource;
 
       { Write stream to disk }
-      OutFile := ChangeFileExt(Writer.OutFile, Writer.SourceExt);
-      Writer.WriteToFile(Directory + OutFile);
+      Writer.WriteToFile(Directory, 1);
     end;
 
     if AWriteSettings then
     begin
       Writer.Clear;
       if (Writer.WriteSettingsFile) then
-        Writer.WriteToFile(Directory+'WSDLImp.settings');
+        Writer.WriteToFile(Directory, 2);
     end;
   finally
     Writer.Free;

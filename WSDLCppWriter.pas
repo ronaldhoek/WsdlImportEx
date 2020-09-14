@@ -289,24 +289,26 @@ begin
 end;
 
 procedure TWSDLCppWriter.SetOutFile(const outFile: string; CheckProject: Boolean);
-{$IFNDEF STANDALONE}
 var
+  sOutfile: string;
+{$IFNDEF STANDALONE}
   I: integer;
 {$ENDIF}
 begin
-  FOutFile := outFile;
+  sOutfile := outFile;
 {$IFNDEF STANDALONE}
   I := 0;
   { Unit name can't conflict with existing file name }
   if CheckProject then
   begin
-    while FileExistInActiveProject(FOutFile+SourceExt) do
+    while FileExistInActiveProject(sOutfile+SourceExt) do
     begin
       Inc(I);
-      FOutFile := outFile + IntToStr(I);
+      sOutfile := outFile + IntToStr(I);
     end;
   end;
-{$ENDIF}  
+{$ENDIF}
+  inherited SetOutFile(sOutfile, CheckProject);
 end;
 
 function TWSDLCppWriter.RemapMembersOfTypeName: boolean;
@@ -1318,7 +1320,7 @@ begin
   end;
 
   { Register Types }
-  WSDLTypeArray := FWSDLImporter.GetTypes;
+  WSDLTypeArray := GetTypesByNameSpace(FCurNameSpace);
   for I := 0 to Length(WSDLTypeArray)-1 do
   begin
     WSDLType := WSDLTypeArray[I];

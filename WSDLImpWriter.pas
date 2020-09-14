@@ -58,6 +58,9 @@ const
   SLineBreak = #13#10;
 {$ENDIF}
 
+  { Used when writing units per namespace }
+  sWDSLProxyNamespace = '$';
+
 type
 
   TWSDLTypeKind = set of WSDLTypeKind;
@@ -225,14 +228,15 @@ type
   { TWSDLWriter }
   TWSDLWriter = class
   private
-    FBuffer: TMemoryStream;
-    FDirect: Boolean;
-  protected
-    FOnWrite: TWriteProc;
-    FTempFile: THandleStream; { File stream as virtual memory }
-    FTempFileName: string;
-    FFileName: string;
+    FBufferList: TStringList;
+    FDirectFolder: string;
+    FFilePerNamespace: Boolean;
     FOutFile: string;
+    function GetNameSpaceBuffer(const aNameSpace: string): TStream;
+  protected
+    FCurNameSpace: string;
+    FOnWrite: TWriteProc;
+    FFileName: string;
     FWSDLImporter: IWSDLImporter;
     FDirectory: string;
     FRelHeaderDir: string;
@@ -243,8 +247,6 @@ type
     procedure WriteLn(const Fmt: string; const Args: array of const); overload;
     procedure WriteFmt(const Fmt: string; const Args: array of const);
     procedure WriteFeedback(const Fmt: string; const Args: array of const);
-    function  DataToString: String;
-    function  DataToUTF8String: UTF8String;
 
     procedure WriteWSDLInfo;
     procedure WriteComplexClassInfo(const WSDLType: IWSDLType);
@@ -273,6 +275,10 @@ type
     function GetMethodInfo(const WSDLOperation: IWSDLOperation): string;
 
     procedure Init(const WSDLImporter: IWSDLImporter; OutFileName : string); virtual;
+
+    { Routines to help with namespace specific data }
+    function GetTypesByNameSpace(const aNameSpace: string): IWSDLTypeArray;
+    function GetNameSpaceOutFile(aNameSpace: string): string;
 
     { Routines that *MUST* be provided by individual writers }
     procedure MapTypes(const WSDLTypeArray: IWSDLTypeArray); virtual;
@@ -319,7 +325,7 @@ type
 
     destructor Destroy; override;
 
-    procedure WriteToFile(FileName: String);
+    procedure WriteToFile(const OutputFolder: String; aType: Integer);
     procedure Clear;
 
     function  IntfExt: DOMString; virtual;
@@ -331,6 +337,7 @@ type
 
     procedure SetDirectory(const Directory: string);
     procedure SetRelHeaderDir(const RelDir: string);
+    procedure SetFilePerNamespace(Value: Boolean);
 
     { Routines that *COULD* be overridden by individual writers }
     procedure WriteForwards; virtual;
@@ -346,8 +353,6 @@ type
 
     property FileName: string read FFileName write FFileName;
     property OutFile: string read FOutFile;
-    property DataString: string read DataToString;
-    property AsUTF8String: UTF8String read DataToUTF8String;
     property OnWrite: TWriteProc read FOnWrite write FOnWrite;
     property TypeInfoPad: DOMString read GetTypeInfoPad;
     property DebugMode: boolean read GetDebugMode;
@@ -539,11 +544,15 @@ const
 
 type
 
+  { Memorystream, which writes to disk when exceeding memmory usages }
   TBailOutMemoryStream = class(TMemoryStream)
   private
-    FWriter: TWSDLWriter;
+    FTempFile: THandleStream; { File stream as virtual memory }
+    FTempFileName: string;
+  protected
+    procedure SetDirect(const aFilename: string);
   public
-    constructor Create(Writer: TWSDLWriter);
+    destructor Destroy; override;
     function Write(const Buffer; Count: Integer): Longint; override;
   end;
 
@@ -1276,10 +1285,17 @@ end;
 
 { TBailOutMemoryStream }
 
-constructor TBailOutMemoryStream.Create(Writer: TWSDLWriter);
+destructor TBailOutMemoryStream.Destroy;
 begin
-  inherited Create;
-  FWriter := Writer;
+  FreeAndNil(FTempFile);
+  inherited;
+end;
+
+procedure TBailOutMemoryStream.SetDirect(const aFilename: string);
+begin
+  if FTempFile <> nil then
+    raise Exception.Create('Cannot use SetDirect');
+  FTempFile := TFileStream.Create(aFilename, fmCreate or fmOpenReadWrite or fmShareDenyWrite);
 end;
 
 function TBailOutMemoryStream.Write(const Buffer; Count: Integer): Longint;
@@ -1288,7 +1304,7 @@ var
   TempDir: string;
   C: Integer;
 begin
-  if FWriter.FTempFile = nil then
+  if FTempFile = nil then
     try
       Result := inherited Write(Buffer, Count);
       Exit;
@@ -1301,21 +1317,21 @@ begin
       begin
         SetLength(TempDir, 255);
         SetLength(TempDir, GetTempPath(255, PChar(TempDir)));
-        SetLength(FWriter.FTempFileName, 255);
-        GetTempFileName(PChar(TempDir), 'w$d1', 0, PChar(FWriter.FTempFileName));
-        SetLength(FWriter.FTempFileName, StrLen(PChar(FWriter.FTempFileName)));
-        H := THandleStream.Create(CreateFile(PChar(FWriter.FTempFileName),
-          GENERIC_READ or GENERIC_WRITE, 0, nil, CREATE_ALWAYS,
+        SetLength(FTempFileName, 255);
+        GetTempFileName(PChar(TempDir), 'w$d1', 0, PChar(FTempFileName));
+        SetLength(FTempFileName, StrLen(PChar(FTempFileName)));
+        H := THandleStream.Create(CreateFile(PChar(FTempFileName),
+          GENERIC_READ or GENERIC_WRITE, FILE_SHARE_READ, nil, CREATE_ALWAYS,
           FILE_ATTRIBUTE_TEMPORARY, 0));
         Self.Position := 0;
         C := Self.Size;
         H.WriteBuffer(Self.Memory^, C);
         Self.SetSize(0);
-        FWriter.FTempFile := H;
+        FTempFile := H;
       end;
     end;
-  if (FWriter.FTempFile <> nil) then
-    Result := FWriter.FTempFile.Write(Buffer, Count)
+  if (FTempFile <> nil) then
+    Result := FTempFile.Write(Buffer, Count)
   else
     Result := 0;
 end;
@@ -3242,8 +3258,15 @@ end;
 { TWSDLWriter }
 
 procedure TWSDLWriter.Clear;
+var
+  I: Integer;
 begin
-  FBuffer.Clear;
+  for I := 0 to FBufferList.Count - 1 do
+  begin
+    FBufferList.Objects[I].Free;
+    FBufferList.Objects[I] := nil;
+  end;
+  FBufferList.Clear;
 end;
 
 constructor TWSDLWriter.Create(const WSDLImporter: IWSDLImporter);
@@ -3252,33 +3275,28 @@ begin
 end;
 
 constructor TWSDLWriter.CreateDirect(const WSDLImporter: IWSDLImporter; const OutFolder: string);
-var
-  Ext: string;
 begin
   CreateFilename(WSDLImporter, WSDLImporter.OutFile);
-
-  if Self.HasSource then
-    Ext := Self.IntfExt
-  else
-    Ext := Self.SourceExt;
-
-  FDirect := True;
-  FTempFile := TFileStream.Create(OutFolder + ChangeFileExt(OutFile, Ext),
-    fmCreate or fmOpenReadWrite or fmShareDenyWrite);
+  FDirectFolder := OutFolder;
 end;
 
 constructor TWSDLWriter.CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
 begin
   inherited Create;
-  FBuffer := TBailOutMemoryStream.Create(Self);
+  FBufferList := TStringList.Create;
+  FBufferList.CaseSensitive := True;
+  FBufferList.Sorted := True;
   Init(WSDLImporter, OutFileName);
 end;
 
 destructor TWSDLWriter.Destroy;
+var
+  I: Integer;
 begin
   FWSDLImporter := nil;
-  FreeAndNil(FBuffer);
-  FreeAndNil(FTempFile);
+  for I := 0 to FBufferList.Count - 1 do
+    FBufferList.Objects[I].Free;
+  FreeAndNil(FBufferList);
   inherited Destroy;
 end;
 
@@ -3306,9 +3324,9 @@ begin
   { Write out the data }
 {$IFDEF UNICODE}
   utf8Str := UTF8Encode(Str);
-  FBuffer.Write(Pointer(utf8Str)^, Length(utf8Str));
+  GetNameSpaceBuffer(FCurNameSpace).Write(Pointer(utf8Str)^, Length(utf8Str));
 {$ELSE}
-  FBuffer.Write(Pointer(Str)^, Length(Str));
+  GetNameSpaceBuffer(FCurNameSpace).Write(Pointer(Str)^, Length(Str));
 {$ENDIF}
 end;
 
@@ -3340,32 +3358,12 @@ begin
     FOnWrite(Fmt, Args);
 end;
 
-function TWSDLWriter.DataToString: String;
-begin
-{$IFDEF UNICODE}
-  with TStringStream.Create('', TEncoding.UTF8) do
-{$ELSE}
-  with TStringStream.Create('') do
-{$ENDIF}
-  try
-    CopyFrom(FBuffer, 0);
-    Result := DataString;
-  finally
-    Free;
-  end;
-end;
-
-function TWSDLWriter.DataToUTF8String: UTF8String;
-begin
-  FBuffer.Position := 0;
-  SetLength(Result, FBuffer.Size);
-  FBuffer.Read(Result[1], Length(Result));
-end;
-
-procedure TWSDLWriter.WriteToFile(FileName: String);
+procedure TWSDLWriter.WriteToFile(const OutputFolder: String; aType: Integer);
 {$IFDEF UNICODE}
 var
+  MS: TBailOutMemoryStream;
   Bom: TBytes;
+  I: Integer;
 
   { Function returns true if any high bit is set in our stream. The idea here
     is to find out if any utf8 encoding took place or if all characters were
@@ -3376,8 +3374,8 @@ var
     I: Integer;
   begin
     Result := False;
-    P := FBuffer.Memory;
-    for I := 0 to FBuffer.Size-1 do
+    P := MS.Memory;
+    for I := 0 to MS.Size-1 do
     begin
       if ((P^ and $80) <> 0) then
       begin
@@ -3389,25 +3387,55 @@ var
   end;
 
 {$ENDIF}
+
+var
+  Ext: WideString;
+  Filename: WideString;
 begin
-  if FDirect then
+  if FDirectFolder > '' then
     Exit;
 
-  with TFileStream.Create(FileName, fmCreate) do
-  try
-{$IFDEF UNICODE}
-    if HasHighBit then
-    begin
-      Bom := TEncoding.UTF8.GetPreamble;
-      FBuffer.Position := 0;
-      Write(Bom[0], Length(Bom));
+  for I := 0 to FBufferList.Count - 1 do
+  begin
+    case aType of
+      0:
+        begin
+          if HasSource then
+            Ext := IntfExt
+          else
+            Ext := SourceExt;
+          Filename := OutputFolder + GetNameSpaceOutFile(FBufferList[I]) + Ext;
+        end;
+      1:
+        Filename := OutputFolder + GetNameSpaceOutFile(FBufferList[I]) + SourceExt;
+      2:
+        Filename := OutputFolder + 'WSDLImp.settings';
+    else
+      raise Exception.Create('Invalid file writing type');
     end;
-{$ENDIF}
-    CopyFrom(FBuffer, 0);
-    if not (wfQuietMode in Global_WSDLGenFlags) then
-      WriteFeedback(sFeedbackWrite+sLineBreak, [FileName]);
-  finally
-    Free;
+
+    MS := FBufferList.Objects[I] as TBailOutMemoryStream;
+
+    with TFileStream.Create(FileName, fmCreate) do
+    try
+  {$IFDEF UNICODE}
+      if HasHighBit then
+      begin
+        Bom := TEncoding.UTF8.GetPreamble;
+        MS.Position := 0;
+        Write(Bom[0], Length(Bom));
+      end;
+  {$ENDIF}
+      if MS.FTempFile = nil then
+        CopyFrom(MS, 0)
+      else
+        CopyFrom(MS.FTempFile, 0);
+
+      if not (wfQuietMode in Global_WSDLGenFlags) then
+        WriteFeedback(sFeedbackWrite+sLineBreak, [FileName]);
+    finally
+      Free;
+    end;
   end;
 end;
 
@@ -4418,26 +4446,29 @@ procedure TWSDLWriter.WriteWSDLInfo;
 var
   I: Integer;
 begin
-  WriteFmt(sWSDLInfoBeg, [FWSDLImporter.FileName]);
-  if FWSDLImporter.ImportList.Count > 1 then
+  if (FCurNameSpace = '') or (FCurNameSpace = sWDSLProxyNamespace) then
   begin
-    for I := 1 to (FWSDLImporter.ImportList.Count-1) do
-      WriteFmt(sImportInfo, [FWSDLImporter.ImportList[I]]);
-  end;
-  if (FWSDLImporter.Encoding <> '') then
-    WriteFmt(sEncodingInfo, [FWSDLImporter.Encoding]);
-  if (Default_WSDLGenFlags <> Global_WSDLGenFlags) then
-    WriteFmt(sGenOptions, [GetNonDefaultOptionsString]);
-  if (FWSDLImporter.Version <> '') then
-    WriteFmt(sVersionInfo, [FWSDLImporter.Version]);
+    WriteFmt(sWSDLInfoBeg, [FWSDLImporter.FileName]);
+    if FWSDLImporter.ImportList.Count > 1 then
+    begin
+      for I := 1 to (FWSDLImporter.ImportList.Count-1) do
+        WriteFmt(sImportInfo, [FWSDLImporter.ImportList[I]]);
+    end;
+    if (FWSDLImporter.Encoding <> '') then
+      WriteFmt(sEncodingInfo, [FWSDLImporter.Encoding]);
+    if (Default_WSDLGenFlags <> Global_WSDLGenFlags) then
+      WriteFmt(sGenOptions, [GetNonDefaultOptionsString]);
+    if (FWSDLImporter.Version <> '') then
+      WriteFmt(sVersionInfo, [FWSDLImporter.Version]);
 
-  { Not emitting the date and version makes it easier to compare
-    changes in the importer when running it on tens of WSDLs
-    between changes made to the importer }
-  if NoDateStamp then
-    WriteFmt(sWSDLInfoEnd, ['', GetImporterOptions()])
-  else
-    WriteFmt(sWSDLInfoEnd, [DateTimeToStr(Now), RevString]);
+    { Not emitting the date and version makes it easier to compare
+      changes in the importer when running it on tens of WSDLs
+      between changes made to the importer }
+    if NoDateStamp then
+      WriteFmt(sWSDLInfoEnd, ['', GetImporterOptions()])
+    else
+      WriteFmt(sWSDLInfoEnd, [DateTimeToStr(Now), RevString]);
+  end;
 end;
 
 procedure TWSDLWriter.WriteComplexClassInfo(const WSDLType: IWSDLType);
@@ -4533,32 +4564,73 @@ begin
 end;
 
 procedure TWSDLWriter.WriteIntf;
+var
+  iCurNameSpace: Integer;
+  types: IWSDLTypeArray;
+  _NameSpaceList: TStringList;
+  wsdltype: IWSDLType;
 begin
   if DebugMode then
     WriteDebug;
 
-  if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
-  begin
-    WriteIntfHeader; // Header 'intf' section (needed for each file)
-    WriteForwards; // Forwards - namespace/file specific
-  end;
-
-  WriteTypes;      // Type - namespace/file specific
-  WriteInterfaces; // Interfaces - namespace/file specific
-
-  if not HasSource then
-  begin
-    if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
+  _NameSpaceList := TStringList.Create;
+  try
+    if FFilePerNamespace then
     begin
-      WriteImplHeader;      // Header 'impl' section (needed for each file)
-      WriteImplementations; // Implementations - namespace/file specific
-      WriteRegCalls;        // Registrations calls - namespace/file specific
-    end;
-  end;
+      iCurNameSpace := 0;
 
-  if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
-  begin
-    WriteIntfFooter; // Header (needed for each file)
+      // WSDL proxy unit
+      _NameSpaceList.Add(sWDSLProxyNamespace);
+
+      // Namespaces of used types
+      types := FWSDLImporter.GetTypes();
+      for wsdltype in types do
+        if _NameSpaceList.IndexOf(wsdltype.Namespace) = -1 then
+          _NameSpaceList.Add(wsdltype.Namespace);
+    end else
+      iCurNameSpace := -1;
+
+    repeat
+
+      if iCurNameSpace <> -1 then
+        FCurNameSpace := _NameSpaceList[iCurNameSpace];
+
+      if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
+      begin
+        WriteIntfHeader; // Header 'intf' section (needed for each file)
+        if FCurNameSpace <> sWDSLProxyNamespace then
+          WriteForwards; // Forwards - namespace/file specific
+      end;
+
+      if FCurNameSpace <> sWDSLProxyNamespace then
+        WriteTypes;      // Type - namespace/file specific
+
+      if (FCurNameSpace = '') or (FCurNameSpace = sWDSLProxyNamespace) then
+        WriteInterfaces; // Proxy interfaces
+
+      if not HasSource then
+      begin
+        if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
+        begin
+          WriteImplHeader;      // Header 'impl' section (needed for each file)
+          WriteImplementations; // Implementations - namespace/file specific
+          WriteRegCalls;        // Registrations calls - namespace/file specific
+        end;
+      end;
+
+      if not (wfSelectiveCodeGen in Global_WSDLGenFlags) then
+      begin
+        WriteIntfFooter; // Header (needed for each file)
+      end;
+
+      if iCurNameSpace = -1 then
+        Exit;
+
+      Inc(iCurNameSpace);
+    until iCurNameSpace >= _NameSpaceList.Count;
+  finally
+    FCurNameSpace := '';
+    _NameSpaceList.Free;
   end;
 end;
 
@@ -4730,9 +4802,15 @@ begin
   FRelHeaderDir := RelDir;
 end;
 
+procedure TWSDLWriter.SetFilePerNamespace(Value: Boolean);
+begin
+  FFilePerNamespace := Value;
+end;
+
 procedure TWSDLWriter.SetOutFile(const outFile: string; CheckProject: Boolean);
 begin
-  FOutFile := outFile;
+  // Force without extension
+  FOutFile := ChangeFileExt(outFile, '');
 end;
 
 function TWSDLWriter.RemapMembersOfTypeName: boolean;
@@ -5049,7 +5127,7 @@ var
   I: integer;
 begin
   Result := 0;
-  TypeArray := FWSDLImporter.GetTypes;
+  TypeArray := GetTypesByNameSpace(FCurNameSpace);
   for I := 0 to Length(TypeArray)-1 do
   begin
     if (TypeArray[I].DataKind in TypeKinds) then
@@ -5168,7 +5246,7 @@ var
   I: integer;
 begin
   Result := 0;
-  TypeArray := FWSDLImporter.GetTypes;
+  TypeArray := GetTypesByNameSpace(FCurNameSpace);
   for I := 0 to Length(TypeArray)-1 do
   begin
     WSDLType := TypeArray[I];
@@ -5287,27 +5365,30 @@ var
   I: integer;
   WSDLPortType: IWSDLPortTYpe;
 begin
-  { Are we in server mode - write implementation }
-  if wfServer in Global_WSDLGenFlags then
+  if (FCurNameSpace = '') or (FCurNameSpace = sWDSLProxyNamespace) then
   begin
-    WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
-    for I := 0 to Length(WSDLPortTypeArray)-1 do
+    { Are we in server mode - write implementation }
+    if wfServer in Global_WSDLGenFlags then
     begin
-      WSDLPortType := WSDLPortTypeArray[I];
-      WriteInterface(WSDLPortType, [ptTypeImpl]);
-    end;
-    for I := 0 to Length(WSDLPortTypeArray)-1 do
+      WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
+      for I := 0 to Length(WSDLPortTypeArray)-1 do
+      begin
+        WSDLPortType := WSDLPortTypeArray[I];
+        WriteInterface(WSDLPortType, [ptTypeImpl]);
+      end;
+      for I := 0 to Length(WSDLPortTypeArray)-1 do
+      begin
+        WSDLPortType := WSDLPortTypeArray[I];
+        WriteInterface(WSDLPortType, [ptMethImpl]);
+      end;
+    end else
     begin
-      WSDLPortType := WSDLPortTypeArray[I];
-      WriteInterface(WSDLPortType, [ptMethImpl]);
-    end;
-  end else
-  begin
-    WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
-    for I := 0 to Length(WSDLPortTypeArray)-1 do
-    begin
-      WSDLPortType := WSDLPortTypeArray[I];
-      WriteInterface(WSDLPortType, [ptTypeFactoryImpl]);
+      WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
+      for I := 0 to Length(WSDLPortTypeArray)-1 do
+      begin
+        WSDLPortType := WSDLPortTypeArray[I];
+        WriteInterface(WSDLPortType, [ptTypeFactoryImpl]);
+      end;
     end;
   end;
 
@@ -5710,6 +5791,101 @@ begin
   { Last resort }
   if Result = '' then
     Result := 'Variant';
+end;
+
+function TWSDLWriter.GetNameSpaceBuffer(const aNameSpace: string): TStream;
+var
+  Ext: string;
+  I: Integer;
+begin
+  I := FBufferList.IndexOf(aNameSpace);
+  if I = -1 then
+  begin
+    I := FBufferList.AddObject(aNameSpace, TBailOutMemoryStream.Create);
+    if FDirectFolder > '' then
+    begin
+      if HasSource then
+        Ext := IntfExt
+      else
+        Ext := SourceExt;
+      (FBufferList.Objects[I] as TBailOutMemoryStream).SetDirect(
+        FDirectFolder + GetNameSpaceOutFile(aNameSpace) + Ext );
+    end;
+  end;
+  Result := FBufferList.Objects[I] as TMemoryStream;
+end;
+
+function TWSDLWriter.GetNameSpaceOutFile(aNameSpace: string): string;
+const
+  sFileDelphiFilenameCharacters = [
+    'a'..'z','A'..'Z','0'..'9'
+    {$IFDEF DOTTED_UNIT_NAMES},'.'{$ENDIF} ];
+var
+  I: Integer;
+{$IFDEF DOTTED_UNIT_NAMES}
+  s: TStrings;
+{$ENDIF}
+begin
+  if (aNameSpace > '') and (aNameSpace <> sWDSLProxyNamespace) then
+  begin
+    aNameSpace := StringReplace(aNameSpace, 'http://', '', [rfIgnoreCase]);
+    aNameSpace := StringReplace(aNameSpace, 'https://', '', [rfIgnoreCase]);
+
+    aNameSpace := StringReplace(aNameSpace, '/', '.', [rfReplaceAll]);
+    aNameSpace := StringReplace(aNameSpace, '..', '.', [rfReplaceAll]);
+
+    for I := 1 to Length(aNameSpace) do
+      if not (aNameSpace[I] in sFileDelphiFilenameCharacters) then
+        aNameSpace[I] := '_';
+
+  {$IFDEF DOTTED_UNIT_NAMES}
+    // Check numeric value between 'dots'
+    s := TStringList.Create;
+    try
+      s.Delimiter := '.';
+      s.StrictDelimiter := True;
+      s.DelimitedText := aNameSpace;
+
+      // Check partial strings starting with numeric character
+      for I := 0 to s.Count - 1 do
+        if s[I][1] in ['0'..'9'] then
+          s[I] := '_' + s[I];
+
+      aNameSpace := s.DelimitedText;
+    finally
+      s.Free;
+    end;
+  {$ENDIF}
+
+    aNameSpace := StringReplace(aNameSpace, '__', '_', [rfReplaceAll]);
+
+    Result := aNameSpace;
+  end else
+    Result := OutFile;
+end;
+
+function TWSDLWriter.GetTypesByNameSpace(const aNameSpace: string):
+    IWSDLTypeArray;
+var
+  iCount: Integer;
+  types: IWSDLTypeArray;
+  wsdltype: IWSDLType;
+begin
+  if aNameSpace = '' then
+    Result := FWSDLImporter.GetTypes
+  else begin
+    types := FWSDLImporter.GetTypes;
+    SetLength(Result, Length(types));
+    iCount := 0;
+    for wsdltype in types do
+      if wsdltype.Namespace = aNameSpace then
+    begin
+      Result[iCount] := wsdltype;
+      Inc(iCount);
+    end;
+    if iCount < Length(types) then
+      SetLength(Result, iCount);
+  end;
 end;
 
 { TWSDLItem }

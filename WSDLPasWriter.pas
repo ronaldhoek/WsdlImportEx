@@ -21,7 +21,6 @@ type
   TWSDLPasWriter = class(TWSDLWriter)
   private
     function GetPartFlagList(const Part: IWSDLPart; SkipFlags: TPartFlag = []): string;
-
   protected
     function  IsDynArrayType(ArrayType: string): Boolean;
 
@@ -160,7 +159,7 @@ var
 begin
   WriteWSDLInfo;
   { Unit declaration, uses... }
-  WriteFmt(sUnitBeg, [OutFile, UseMidas[woHasSOAPDM in FWSDLImporter.Options]]);
+  WriteFmt(sUnitBeg, [GetNameSpaceOutFile(FCurNameSpace), UseMidas[woHasSOAPDM in FWSDLImporter.Options]]);
 
   { 'const' section }
   if EmitIndexMacros(ImpOpts)
@@ -187,7 +186,7 @@ begin
 {$ENDIF}
 
   { 'type' section - Do we have types or interfaces }
-  if (Length(FWSDLImporter.GetTypes) > 0) or
+  if (Length(GetTypesByNameSpace(FCurNameSpace)) > 0) or
      (Length(FWSDLImporter.GetPortTypes) > 0) then
     WriteStr(sTypeBeg)
   else
@@ -246,7 +245,7 @@ procedure TWSDLPasWriter.SetOutFile(const outFile: string; CheckProject: Boolean
     WSDLType: IWSDLType;
   begin
     Result := False;
-    for WSDLType in FWSDLImporter.GetTypes do
+    for WSDLType in FWSDLImporter.GetTypes do // Do not filter by namespace!
     begin
       if SameText(WSDLType.LangName, Name) Then
       begin
@@ -277,24 +276,27 @@ procedure TWSDLPasWriter.SetOutFile(const outFile: string; CheckProject: Boolean
   end;
 
 var
+  sOutfile: string;
   I: integer;
 begin
   I := 0;
-  FOutFile := outFile;
+  sOutfile := outFile;
   { Unit name can't start with number }
-  if CharInSet(FOutFile[1], ['0'..'9']) then
-    FOutFile := '_' + FOutFile;
+  if CharInSet(sOutfile[1], ['0'..'9']) then
+    sOutfile := '_' + sOutfile;
   { Unit name can't conflict with porttype name or typename }
-  while IsPortTypeName(FOutFile)
-     or IsTypeName(FOutFile)
+  while IsPortTypeName(sOutfile)
+     or IsTypeName(sOutfile)
 {$IFNDEF STANDALONE}
-     or (CheckProject and FileExistInActiveProject(FOutFile+SourceExt))
+     or (CheckProject and FileExistInActiveProject(sOutfile+SourceExt))
 {$ENDIF}
      do
   begin
     Inc(I);
-    FOutFile := outFile + IntToStr(I);
+    sOutfile := outFile + IntToStr(I);
   end;
+
+  inherited SetOutFile(sOutfile, CheckProject);
 end;
 
 function TWSDLPasWriter.GetPartFlagList(const Part: IWSDLPart;
@@ -1258,7 +1260,7 @@ begin
   RegProcCount := 0;
 
   { Check if types go first because there are too many for initialization section }
-  WSDLTypes := FWSDLImporter.GetTypes;
+  WSDLTypes := GetTypesByNameSpace(FCurNameSpace);
 {$IFDEF WORKAROUND_E2283}
   RegTypesInProcs := (Length(WSDLTypes) > MAX_TYPES_IN_INITIALIZATION);
 {$ELSE}
@@ -1278,313 +1280,316 @@ begin
   { Write initialization }
   WriteStr(sUnitInit);
 
-  { Register PortTypes }
-  WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
-  for I := 0 to Length(WSDLPortTypeArray)-1 do
+  if (FCurNameSpace = '') or (FCurNameSpace = sWDSLProxyNamespace) then
   begin
-    WSDLPortType := WSDLPortTypeArray[I];
-
-    if Verbose then
-      WriteLn(sPasCommentIdent, [WSDLPortType.Name]);
-
-    if (WSDLPortType.Name <> WSDLPortType.LangName) then
-      ExtName := Escape(WSDLPortType.Name)
-    else
-      ExtName := '';
-
-    { Pick the optimal output }
-    if WSDLPortType.LangName <> WSDLPortType.Name then
-      WriteFmt(sRegInterfacePas2, [WSDLPortType.LangName,
-                                   WSDLPortType.Namespace,
-                                   FWSDLImporter.Encoding,
-                                   ExtName])
-    else
-      WriteFmt(sRegInterfacePas1, [WSDLPortType.LangName,
-                                   WSDLPortType.Namespace,
-                                   FWSDLImporter.Encoding]);
-
-    { Register PortTypes - for server implementation }
-    if (wfServer in Global_WSDLGenFlags) then
+    { Register PortTypes }
+    WSDLPortTypeArray := FWSDLImporter.GetPortTypes;
+    for I := 0 to Length(WSDLPortTypeArray)-1 do
     begin
+      WSDLPortType := WSDLPortTypeArray[I];
+
       if Verbose then
-        WriteLn(sPasCommentIdent, [Format(sServerImpl, [WSDLPortType.LangName])]);
-      WriteFmt(sRegInvokableClass, [WSDLPortType.LangName + sImplSuffix]);
-    end;
+        WriteLn(sPasCommentIdent, [WSDLPortType.Name]);
 
-    { SOAPAction[s] }
-    if WSDLPortType.HasDefaultSOAPAction then
-    begin
-      { If we're in server mode, avoid tricky SOAPActions that will make
-        dispatching fail }
-      if (not (wfServer in Global_WSDLGenFlags)) or
-         (Pos(DOMString(SOperationNameSpecifier), WSDLPortType.SOAPAction)=0) then
-        WriteFmt(sRegSOAPActionPas, [WSDLPortType.LangName, WSDLPortType.SOAPAction]);
-    end
-    else if WSDLPortType.HasAllSOAPActions then
-    begin
-      if not (wfServer in Global_WSDLGenFlags) and (WSDLPortType.OperationCount > 0) then
+      if (WSDLPortType.Name <> WSDLPortType.LangName) then
+        ExtName := Escape(WSDLPortType.Name)
+      else
+        ExtName := '';
+
+      { Pick the optimal output }
+      if WSDLPortType.LangName <> WSDLPortType.Name then
+        WriteFmt(sRegInterfacePas2, [WSDLPortType.LangName,
+                                     WSDLPortType.Namespace,
+                                     FWSDLImporter.Encoding,
+                                     ExtName])
+      else
+        WriteFmt(sRegInterfacePas1, [WSDLPortType.LangName,
+                                     WSDLPortType.Namespace,
+                                     FWSDLImporter.Encoding]);
+
+      { Register PortTypes - for server implementation }
+      if (wfServer in Global_WSDLGenFlags) then
       begin
-      { Here we write out the SOAP action for each operation }
-        If WSDLPortType.SOAPAction <> '' then
-          DelimChar := WSDLPortType.SOAPAction[1]
-        else
-          DelimChar := '|';
-        WriteFmt(sRegAllSOAPActionPas, [WSDLPortType.LangName,
-                                        GetSafeLiteral(WSDLPortType.SOAPAction, 48+Length(WSDLPortType.LangName),
-                                                       DelimChar)]);
+        if Verbose then
+          WriteLn(sPasCommentIdent, [Format(sServerImpl, [WSDLPortType.LangName])]);
+        WriteFmt(sRegInvokableClass, [WSDLPortType.LangName + sImplSuffix]);
       end;
-    end;
 
-    { Return Return Param Names }
-{$IFDEF _DEBUG}
-    if RegReturnParamNames(WSDLPortType) then
-    begin
-      WriteFmt(sRegParamNamesPasBeg, [WSDLPortType.LangName]);
-      {NOTE: -2 is for the %s in the format specifier}
-      WriteStr(GetReturnParamNames(WSDLPortType, Length(sRegParamNamesPasBeg)+Length(WSDLPortType.LangName)-2));
-      WriteLn(');');
-    end;
-{$ENDIF}
-
-    { Flag the registry if this interface is 'encoded' vs. 'literal'
-      However, only do this if we're generating client code - for servers
-      we're always rpc|encoded }
-    if not (wfServer in Global_WSDLGenFlags) then
-    begin
-      if (ioDocument in WSDLPortType.InvokeOptions) then
-        WriteFmt(sRegInvokeOptDocPas, [WSDLPortType.LangName]);
-      if (ioLiteral in WSDLPortType.InvokeOptions) then
-        WriteFmt(sRegInvokeOptLitPas, [WSDLPortType.LangName]);
-      if (ioSOAP12 in WSDLPortType.InvokeOptions) then
-        WriteFmt(sRegInvokeOptSOAP12Pas, [WSDLPortType.LangName]);
-    end;
-
-{$IFDEF REGISTER_UDDI_INFO}
-    { if we have UDDI information flag it }
-    if (ioHasUDDIInfo in WSDLPortType.InvokeOptions) then
-      WriteFmt(sRegUDDIInfoPas, [WSDLPortType.LangName,
-                                 FWSDLImporter.UDDIImportInfo.UDDIOperator,
-                                 FWSDLImporter.UDDIImportInfo.BindingKey]);
-{$ENDIF}
-
-    { Use trackers for headers/faults }
-    UseTrackers := wfServer in Global_WSDLGenFlags;
-
-    if (UseTrackers) then
-    begin
-      HeaderTracker := TRegTracker.Create(WSDLPortType.LangName,
-                       SRegHeaderPas1, SRegHeaderMethPas, rtHeader);
-      FaultTracker := TRegTracker.Create(WSDLPortType.LangName,
-                       SRegFaultPas, SRegFaultMethPas, rtFault);
-    end
-    else
-    begin
-      HeaderList := TDOMStrings.Create;
-    end;
-
-    { Check operations }
-    try
-      WSDLOperations := WSDLPortType.Operations;
-      for J := 0 to Length(WSDLOperations)-1 do
+      { SOAPAction[s] }
+      if WSDLPortType.HasDefaultSOAPAction then
       begin
-        WSDLOperation := WSDLOperations[J];
-        MethodHeading := False;
-        ARegInfo.Reset;
-
-        { Register information lost when we unwrapped}
-        ReturnPart := nil;
-        InputNamespace := '';
-        OutputNamespace := '';
-        ReturnName := '';
-        PartFlagList := '';
-        RegInfoStr := '';
-
-        if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioDocument] then
+        { If we're in server mode, avoid tricky SOAPActions that will make
+          dispatching fail }
+        if (not (wfServer in Global_WSDLGenFlags)) or
+           (Pos(DOMString(SOperationNameSpecifier), WSDLPortType.SOAPAction)=0) then
+          WriteFmt(sRegSOAPActionPas, [WSDLPortType.LangName, WSDLPortType.SOAPAction]);
+      end
+      else if WSDLPortType.HasAllSOAPActions then
+      begin
+        if not (wfServer in Global_WSDLGenFlags) and (WSDLPortType.OperationCount > 0) then
         begin
-          if (WSDLOperation.InputWrapper <> nil) then
-            InputNamespace := WSDLOperation.InputWrapper.DataType.Namespace;
-          if (WSDLOperation.OutputWrapper <> nil) then
-            OutputNamespace := WSDLOperation.OutputWrapper.DataType.Namespace;
+        { Here we write out the SOAP action for each operation }
+          If WSDLPortType.SOAPAction <> '' then
+            DelimChar := WSDLPortType.SOAPAction[1]
+          else
+            DelimChar := '|';
+          WriteFmt(sRegAllSOAPActionPas, [WSDLPortType.LangName,
+                                          GetSafeLiteral(WSDLPortType.SOAPAction, 48+Length(WSDLPortType.LangName),
+                                                         DelimChar)]);
+        end;
+      end;
 
-          if OutputNamespace = WSDLPortType.Namespace then
-            OutputNamespace := '';
+      { Return Return Param Names }
+  {$IFDEF _DEBUG}
+      if RegReturnParamNames(WSDLPortType) then
+      begin
+        WriteFmt(sRegParamNamesPasBeg, [WSDLPortType.LangName]);
+        {NOTE: -2 is for the %s in the format specifier}
+        WriteStr(GetReturnParamNames(WSDLPortType, Length(sRegParamNamesPasBeg)+Length(WSDLPortType.LangName)-2));
+        WriteLn(');');
+      end;
+  {$ENDIF}
 
+      { Flag the registry if this interface is 'encoded' vs. 'literal'
+        However, only do this if we're generating client code - for servers
+        we're always rpc|encoded }
+      if not (wfServer in Global_WSDLGenFlags) then
+      begin
+        if (ioDocument in WSDLPortType.InvokeOptions) then
+          WriteFmt(sRegInvokeOptDocPas, [WSDLPortType.LangName]);
+        if (ioLiteral in WSDLPortType.InvokeOptions) then
+          WriteFmt(sRegInvokeOptLitPas, [WSDLPortType.LangName]);
+        if (ioSOAP12 in WSDLPortType.InvokeOptions) then
+          WriteFmt(sRegInvokeOptSOAP12Pas, [WSDLPortType.LangName]);
+      end;
+
+  {$IFDEF REGISTER_UDDI_INFO}
+      { if we have UDDI information flag it }
+      if (ioHasUDDIInfo in WSDLPortType.InvokeOptions) then
+        WriteFmt(sRegUDDIInfoPas, [WSDLPortType.LangName,
+                                   FWSDLImporter.UDDIImportInfo.UDDIOperator,
+                                   FWSDLImporter.UDDIImportInfo.BindingKey]);
+  {$ENDIF}
+
+      { Use trackers for headers/faults }
+      UseTrackers := wfServer in Global_WSDLGenFlags;
+
+      if (UseTrackers) then
+      begin
+        HeaderTracker := TRegTracker.Create(WSDLPortType.LangName,
+                         SRegHeaderPas1, SRegHeaderMethPas, rtHeader);
+        FaultTracker := TRegTracker.Create(WSDLPortType.LangName,
+                         SRegFaultPas, SRegFaultMethPas, rtFault);
+      end
+      else
+      begin
+        HeaderList := TDOMStrings.Create;
+      end;
+
+      { Check operations }
+      try
+        WSDLOperations := WSDLPortType.Operations;
+        for J := 0 to Length(WSDLOperations)-1 do
+        begin
+          WSDLOperation := WSDLOperations[J];
+          MethodHeading := False;
+          ARegInfo.Reset;
+
+          { Register information lost when we unwrapped}
+          ReturnPart := nil;
+          InputNamespace := '';
+          OutputNamespace := '';
+          ReturnName := '';
+          PartFlagList := '';
+          RegInfoStr := '';
+
+          if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioDocument] then
+          begin
+            if (WSDLOperation.InputWrapper <> nil) then
+              InputNamespace := WSDLOperation.InputWrapper.DataType.Namespace;
+            if (WSDLOperation.OutputWrapper <> nil) then
+              OutputNamespace := WSDLOperation.OutputWrapper.DataType.Namespace;
+
+            if OutputNamespace = WSDLPortType.Namespace then
+              OutputNamespace := '';
+
+            WSDLParts := WSDLOperation.Parts;
+            for K := 0 to Length(WSDLParts)-1 do
+            begin
+              WSDLPart := WSDLParts[K];
+              if WSDLPart.PartKind = pReturn then
+              begin
+                ReturnPart := WSDLPart;
+                PartFlagList := GetPartFlagList(ReturnPart);
+                ReturnName := Escape(ReturnPart.Name);
+                Break;
+              end;
+            end;
+          end;
+
+          if (ReturnName <> '') or
+             ((InputNamespace <> '') and (InputNamespace <> WSDLPortType.Namespace)) or
+             ((OutputNamespace <> '') and (OutputNamespace <> WSDLPortType.Namespace)) or
+             (PartFlagList <> '') or
+             (WSDLOperation.Name <> WSDLOperation.LangName) then
+          begin
+            InternalName := Escape(WSDLOperation.LangName);
+            ExternalName := Escape(WSDLOperation.Name);
+            if ExternalName = InternalName then
+              ExternalName := '';
+
+            if ReturnName <> '' then
+              ARegInfo.SetAttr(InfoAttribute.iaMethReturnName, ReturnName);
+
+            if ((InputNamespace <> '') and (InputNamespace <> WSDLPortType.Namespace)) then
+              ARegInfo.SetAttr(InfoAttribute.iaMethRequestNamespace, InputNamespace);
+
+            if ((OutputNamespace <> '') and (OutputNamespace <> WSDLPortType.Namespace)) then
+              ARegInfo.SetAttr(InfoAttribute.iaMethResponseNamespace, OutputNamespace);
+
+            if ARegInfo.HasAttr then
+              RegInfoStr := ARegInfo.AsString(False);
+
+            if (ExternalName <> '') or
+               (RegInfoStr <> '') or
+               (PartFlagList <> '') then
+            begin
+              if Verbose then
+              begin
+                WriteLn(sPasCommentIdent, [Format('%s.%s', [WSDLPortType.Name, InternalName])]);
+                MethodHeading := True;
+              end;
+              if PartFlagList <> '' then
+                WriteFmt(sRegMethodInfoPas, [WSDLPortType.LangName,
+                                             InternalName,
+                                             ExternalName,
+                                             RegInfoStr,
+                                             PartFlagList])
+              else if RegInfoStr <> '' then
+                WriteFmt(sRegMethodInfoPasNoOpts, [WSDLPortType.LangName,
+                                                   InternalName,
+                                                   ExternalName,
+                                                   RegInfoStr])
+              else
+                WriteFmt(sRegMethodInfoPasNoInfo, [WSDLPortType.LangName,
+                                                   InternalName,
+                                                   ExternalName]);
+            end;
+          end;
+
+          { Are trackers keeping track of headers }
+          if (UseTrackers) then
+          begin
+            AddHeadersForOperation(WSDLOperation, HeaderTracker);
+            AddFaultsForOperation(WSDLOperation, FaultTracker);
+          end
+          else
+          begin
+            for WSDLPart in WSDLOperation.Headers do
+            begin
+              HeaderSig := WSDLPart.DataType.LangName + ':' +
+                           WSDLPart.Name + ':' +
+                           WSDLPart.DataType.NameSpace;
+              if HeaderList.IndexOf(HeaderSig) = -1 then
+              begin
+                WriteFmt(sRegHeaderPas2, [WSDLPortType.LangName,
+                                          WSDLPart.DataType.LangName,
+                                          Escape(WSDLPart.Name),
+                                          WSDLPart.DataType.Namespace]);
+                HeaderList.Add(HeaderSig);
+              end;
+            end;
+          end;
+
+          { Check parameter renames }
           WSDLParts := WSDLOperation.Parts;
           for K := 0 to Length(WSDLParts)-1 do
           begin
             WSDLPart := WSDLParts[K];
-            if WSDLPart.PartKind = pReturn then
+
+            PartFlagList := '';
+            ParamNamespace := '';
+            RegInfoStr := '';
+            ARegInfo.Reset;
+
+            if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioDocument] then
             begin
-              ReturnPart := WSDLPart;
-              PartFlagList := GetPartFlagList(ReturnPart);
-              ReturnName := Escape(ReturnPart.Name);
-              Break;
-            end;
-          end;
-        end;
-
-        if (ReturnName <> '') or
-           ((InputNamespace <> '') and (InputNamespace <> WSDLPortType.Namespace)) or
-           ((OutputNamespace <> '') and (OutputNamespace <> WSDLPortType.Namespace)) or
-           (PartFlagList <> '') or
-           (WSDLOperation.Name <> WSDLOperation.LangName) then
-        begin
-          InternalName := Escape(WSDLOperation.LangName);
-          ExternalName := Escape(WSDLOperation.Name);
-          if ExternalName = InternalName then
-            ExternalName := '';
-
-          if ReturnName <> '' then
-            ARegInfo.SetAttr(InfoAttribute.iaMethReturnName, ReturnName);
-
-          if ((InputNamespace <> '') and (InputNamespace <> WSDLPortType.Namespace)) then
-            ARegInfo.SetAttr(InfoAttribute.iaMethRequestNamespace, InputNamespace);
-
-          if ((OutputNamespace <> '') and (OutputNamespace <> WSDLPortType.Namespace)) then
-            ARegInfo.SetAttr(InfoAttribute.iaMethResponseNamespace, OutputNamespace);
-
-          if ARegInfo.HasAttr then
-            RegInfoStr := ARegInfo.AsString(False);
-
-          if (ExternalName <> '') or
-             (RegInfoStr <> '') or
-             (PartFlagList <> '') then
-          begin
-            if Verbose then
-            begin
-              WriteLn(sPasCommentIdent, [Format('%s.%s', [WSDLPortType.Name, InternalName])]);
-              MethodHeading := True;
-            end;
-            if PartFlagList <> '' then
-              WriteFmt(sRegMethodInfoPas, [WSDLPortType.LangName,
-                                           InternalName,
-                                           ExternalName,
-                                           RegInfoStr,
-                                           PartFlagList])
-            else if RegInfoStr <> '' then
-              WriteFmt(sRegMethodInfoPasNoOpts, [WSDLPortType.LangName,
-                                                 InternalName,
-                                                 ExternalName,
-                                                 RegInfoStr])
+              // Don't bother with optional since parameters
+              // are not really optional in Pascal/C++
+              PartFlagList := GetPartFlagList(WSDLPart, [pfOptional]);
+              ParamNamespace := WSDLPart.DataType.Namespace;
+              if ((InputNamespace <> '') and (ParamNamespace = InputNamespace)) or
+                 ((InputNamespace = '') and (ParamNamespace = WSDLPortType.Namespace)) then
+                ParamNamespace := '';
+            end
             else
-              WriteFmt(sRegMethodInfoPasNoInfo, [WSDLPortType.LangName,
-                                                 InternalName,
-                                                 ExternalName]);
+            begin
+              // Rpc|lit
+              if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioLiteral] then            // Rpc|lit
+                 ParamNamespace := WSDLPart.DataType.Namespace;
+            end;
+
+            if ParamNamespace = XMLSchemaNamespace then
+              ParamNamespace := '';
+
+            if ParamNamespace <> '' then
+              ARegInfo.SetAttr(InfoAttribute.iaNamespace, ParamNamespace);
+            if WSDLPart.DataType.RegInfo <> '' then
+              ARegInfo.Load(WSDLPart.DataType.RegInfo);
+            if ARegInfo.HasAttr then
+              RegInfoStr := ARegInfo.AsString(False);
+
+            InternalName := Escape(WSDLPart.LangName);
+            ExternalName := Escape(WSDLPart.Name);
+            if ExternalName = InternalName then
+              ExternalName := '';
+
+            if (ExternalName <> '') or
+               (RegInfoStr <> '') or
+               (PartFlagList <> '' ) then
+            begin
+              if Verbose and (MethodHeading = False) then
+              begin
+                WriteLn(sPasCommentIdent, [Format('%s.%s', [WSDLPortType.Name, WSDLOperation.LangName])]);
+                MethodHeading := True;
+              end;
+              if PartFlagList <> '' then
+                WriteFmt(sRegParamInfoPas, [WSDLPortType.LangName,
+                                            WSDLOperation.LangName,
+                                            InternalName,
+                                            ExternalName,
+                                            RegInfoStr,
+                                            PartFlagList])
+              else if RegInfoStr <> '' then
+                WriteFmt(sRegParamInfoPasNoOpts, [WSDLPortType.LangName,
+                                                  WSDLOperation.LangName,
+                                                  InternalName,
+                                                  ExternalName,
+                                                  RegInfoStr])
+              else
+                WriteFmt(sRegParamInfoPasNoInfo, [WSDLPortType.LangName,
+                                                  WSDLOperation.LangName,
+                                                  InternalName,
+                                                  ExternalName]);
+            end;
           end;
         end;
 
-        { Are trackers keeping track of headers }
         if (UseTrackers) then
         begin
-          AddHeadersForOperation(WSDLOperation, HeaderTracker);
-          AddFaultsForOperation(WSDLOperation, FaultTracker);
+          HeaderTracker.WriteRegistration(WSDLPortType.LangName, WSDLOperations, Self);
+          FaultTracker.WriteRegistration(WSDLPortType.LangName, WSDLOperations, Self);
+        end;
+      finally
+        if (UseTrackers) then
+        begin
+          HeaderTracker.Free;
+          FaultTracker.Free;
         end
         else
         begin
-          for WSDLPart in WSDLOperation.Headers do
-          begin
-            HeaderSig := WSDLPart.DataType.LangName + ':' +
-                         WSDLPart.Name + ':' +
-                         WSDLPart.DataType.NameSpace;
-            if HeaderList.IndexOf(HeaderSig) = -1 then
-            begin
-              WriteFmt(sRegHeaderPas2, [WSDLPortType.LangName,
-                                        WSDLPart.DataType.LangName,
-                                        Escape(WSDLPart.Name),
-                                        WSDLPart.DataType.Namespace]);
-              HeaderList.Add(HeaderSig);
-            end;
-          end;
+          HeaderList.Free;
         end;
-
-        { Check parameter renames }
-        WSDLParts := WSDLOperation.Parts;
-        for K := 0 to Length(WSDLParts)-1 do
-        begin
-          WSDLPart := WSDLParts[K];
-
-          PartFlagList := '';
-          ParamNamespace := '';
-          RegInfoStr := '';
-          ARegInfo.Reset;
-
-          if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioDocument] then
-          begin
-            // Don't bother with optional since parameters
-            // are not really optional in Pascal/C++
-            PartFlagList := GetPartFlagList(WSDLPart, [pfOptional]);
-            ParamNamespace := WSDLPart.DataType.Namespace;
-            if ((InputNamespace <> '') and (ParamNamespace = InputNamespace)) or
-               ((InputNamespace = '') and (ParamNamespace = WSDLPortType.Namespace)) then
-              ParamNamespace := '';
-          end
-          else
-          begin
-            // Rpc|lit
-            if (WSDLPortType.InvokeOptions * [ioLiteral, ioDocument]) = [ioLiteral] then            // Rpc|lit
-               ParamNamespace := WSDLPart.DataType.Namespace;
-          end;
-
-          if ParamNamespace = XMLSchemaNamespace then
-            ParamNamespace := '';
-
-          if ParamNamespace <> '' then
-            ARegInfo.SetAttr(InfoAttribute.iaNamespace, ParamNamespace);
-          if WSDLPart.DataType.RegInfo <> '' then
-            ARegInfo.Load(WSDLPart.DataType.RegInfo);
-          if ARegInfo.HasAttr then
-            RegInfoStr := ARegInfo.AsString(False);
-
-          InternalName := Escape(WSDLPart.LangName);
-          ExternalName := Escape(WSDLPart.Name);
-          if ExternalName = InternalName then
-            ExternalName := '';
-
-          if (ExternalName <> '') or
-             (RegInfoStr <> '') or
-             (PartFlagList <> '' ) then
-          begin
-            if Verbose and (MethodHeading = False) then
-            begin
-              WriteLn(sPasCommentIdent, [Format('%s.%s', [WSDLPortType.Name, WSDLOperation.LangName])]);
-              MethodHeading := True;
-            end;
-            if PartFlagList <> '' then
-              WriteFmt(sRegParamInfoPas, [WSDLPortType.LangName,
-                                          WSDLOperation.LangName,
-                                          InternalName,
-                                          ExternalName,
-                                          RegInfoStr,
-                                          PartFlagList])
-            else if RegInfoStr <> '' then
-              WriteFmt(sRegParamInfoPasNoOpts, [WSDLPortType.LangName,
-                                                WSDLOperation.LangName,
-                                                InternalName,
-                                                ExternalName,
-                                                RegInfoStr])
-            else
-              WriteFmt(sRegParamInfoPasNoInfo, [WSDLPortType.LangName,
-                                                WSDLOperation.LangName,
-                                                InternalName,
-                                                ExternalName]);
-          end;
-        end;
-      end;
-
-      if (UseTrackers) then
-      begin
-        HeaderTracker.WriteRegistration(WSDLPortType.LangName, WSDLOperations, Self);
-        FaultTracker.WriteRegistration(WSDLPortType.LangName, WSDLOperations, Self);
-      end;
-    finally
-      if (UseTrackers) then
-      begin
-        HeaderTracker.Free;
-        FaultTracker.Free;
-      end
-      else
-      begin
-        HeaderList.Free;
       end;
     end;
   end;
