@@ -111,7 +111,12 @@ procedure GenProxy(const WSDLFileName: String; OutFile: String;
                    const Directory, RelHdrDir, StringType, BaseClassName: string;
                    LangGen: CodeGen; const UDDIInfo: IImportBindingInfo;
                    AWriteSettings: Boolean);
+type
+  TWSDLWriterClass = class of TWSDLWriter;
+const
+  bDirectWrite: boolean = true;
 var
+  WriterClass: TWSDLWriterClass;
   Writer: TWSDLWriter;
   Importer: IWSDLImporter;
   Ext: WideString;
@@ -148,9 +153,15 @@ begin
 
   { Here we determine the writer }
   if (LangGen = CppGen) then
-    Writer := TWSDLCppWriter.Create(Importer)
+    WriterClass := TWSDLCppWriter
   else
-    Writer := TWSDLPasWriter.Create(Importer);
+    WriterClass := TWSDLPasWriter;
+
+  { Direct writing to file? }
+  if bDirectWrite then
+    Writer := WriterClass.CreateDirect(Importer, Directory + RelHdrDir)
+  else
+    Writer := WriterClass.Create(Importer);
 
   try
     { Give writer output directory }
@@ -160,12 +171,12 @@ begin
 
     { Write interface to stream}
     Writer.WriteIntf;
+
+    { Write stream to disk }
     if Writer.HasSource then
       Ext := Writer.IntfExt
     else
       Ext := Writer.SourceExt;
-
-    { Write stream to disk }
     OutFile := ChangeFileExt(Writer.OutFile, Ext);
     Writer.WriteToFile(Directory + RelHdrDir + OutFile);
 
@@ -209,7 +220,7 @@ var
   begin
     if (Length(S) < 3) then
       raise Exception.CreateFmt(OptionError, [S]);
-    Directory := Copy(S, 3, MaxInt);
+    Directory := ExpandFileName(Copy(S, 3, MaxInt));
     if AnsiLastChar(Directory)^ <> '\' then     { Do not localize }
        Directory := Directory + '\';            { Do not localize }
   end;
@@ -594,6 +605,9 @@ begin
             Success := 0;
             SetLength(Indices, Total);
 
+            if not ForceDirectories(Directory) then
+              raise Exception.Create('Output directory does not exist and cannot be created');
+
             for I:=0 to WSDLFileNames.Count-1 do
             begin
               try
@@ -686,5 +700,8 @@ begin
 end;
 
 begin
+{$IFDEF DEBUG}
+  ReportMemoryLeaksOnShutdown := True;
+{$ENDIF}
   DoMain;
 end.

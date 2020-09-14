@@ -226,6 +226,7 @@ type
   TWSDLWriter = class
   private
     FBuffer: TMemoryStream;
+    FDirect: Boolean;
   protected
     FOnWrite: TWriteProc;
     FTempFile: THandleStream; { File stream as virtual memory }
@@ -314,6 +315,7 @@ type
   public
     constructor Create(const WSDLImporter: IWSDLImporter);
     constructor CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
+    constructor CreateDirect(const WSDLImporter: IWSDLImporter; const OutFolder: string);
 
     destructor Destroy; override;
 
@@ -3249,6 +3251,22 @@ begin
   CreateFilename(WSDLImporter, WSDLImporter.OutFile);
 end;
 
+constructor TWSDLWriter.CreateDirect(const WSDLImporter: IWSDLImporter; const OutFolder: string);
+var
+  Ext: string;
+begin
+  CreateFilename(WSDLImporter, WSDLImporter.OutFile);
+
+  if Self.HasSource then
+    Ext := Self.IntfExt
+  else
+    Ext := Self.SourceExt;
+
+  FDirect := True;
+  FTempFile := TFileStream.Create(OutFolder + ChangeFileExt(OutFile, Ext),
+    fmCreate or fmOpenReadWrite or fmShareDenyWrite);
+end;
+
 constructor TWSDLWriter.CreateFilename(const WSDLImporter: IWSDLImporter; OutFileName : string);
 begin
   inherited Create;
@@ -3372,6 +3390,9 @@ var
 
 {$ENDIF}
 begin
+  if FDirect then
+    Exit;
+
   with TFileStream.Create(FileName, fmCreate) do
   try
 {$IFDEF UNICODE}
