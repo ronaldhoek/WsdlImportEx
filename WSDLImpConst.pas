@@ -338,7 +338,8 @@ sUnitBeg  =  'unit %0:s;'                                       + sLineBreak +
                                                                   sLineBreak +
              'interface'                                        + sLineBreak +
                                                                   sLineBreak +
-             'uses Soap.InvokeRegistry, Soap.SOAPHTTPClient, System.Types, Soap.XSBuiltIns%s;'     + sLineBreak;
+             'uses'                                             + sLineBreak +
+             '  Soap.InvokeRegistry, Soap.SOAPHTTPClient, System.Types, Soap.XSBuiltIns%s;' + sLineBreak;
 sConstBeg  =                                                      sLineBreak +
              'const'                                            + sLineBreak;
 
@@ -375,8 +376,11 @@ sTypeBeg  =                                                       sLineBreak +
 sSOAPMidas = ', SOAPMidas';
 
 sUnitImpl =  sLineBreak + sLineBreak +
-             'implementation'                                   + sLineBreak;
-sUnitUses =  '  uses System.SysUtils;'                          + sLineBreak +
+             'implementation'                                   + sLineBreak +
+                                                                  sLineBreak;
+
+sUnitUses =  'uses'                                             + sLineBreak +
+             '  System.SysUtils;'                               + sLineBreak +
                                                                   sLineBreak;
 sUnitType =  'type'                                             + sLineBreak +
                                                                   sLineBreak;
