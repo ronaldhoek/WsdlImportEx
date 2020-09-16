@@ -1,11 +1,3 @@
-{*******************************************************}
-{                                                       }
-{           CodeGear Delphi Runtime Library             }
-{ Copyright(c) 2012-2017 Embarcadero Technologies, Inc. }
-{              All rights reserved                      }
-{                                                       }
-{*******************************************************}
-
 {$IFDEF CONDITIONALEXPRESSIONS}
   {$IF CompilerVersion >= 24.0}
     {$LEGACYIFEND ON}
