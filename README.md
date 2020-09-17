@@ -8,7 +8,9 @@ This project tries to overcome this issue by splitting the import into several f
 
 Second: created a GUI application with the following features
 - easelly import WSDL files/url using a GUI
-- change typenames (inclusing batch editor with filtering by namespace)
+- change typenames
+  - inclusing batch editor with filtering by namespace
+  - mappings are saved to files for use in next import
 - preview files to be created
 
 
