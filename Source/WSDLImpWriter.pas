@@ -233,6 +233,7 @@ type
     FFilePerNamespace: Boolean;
     FOutFile: string;
     function GetNameSpaceBuffer(const aNameSpace: string): TStream;
+    procedure WriteToFile(aType: Integer);
   protected
     FCurNameSpace: string;
     FOnWrite: TWriteProc;
@@ -302,6 +303,8 @@ type
     procedure WriteRegCalls; virtual; abstract;
     function  Escape(const S: DOMString): DOMString; virtual; abstract;
 
+    procedure WriteSource; virtual;
+    function  WriteSettingsFile: Boolean; virtual; abstract;
 
     { Routines likely to be overridden by individual writers }
     procedure WriteIntfHeader; virtual;
@@ -325,15 +328,14 @@ type
 
     destructor Destroy; override;
 
-    procedure WriteToFile(const OutputFolder: String; aType: Integer);
+    procedure WritePreview(AWriteSettings: boolean; Info: TStrings);
+    procedure WriteToDisk(AWriteSettings: boolean);
     procedure Clear;
 
     function  IntfExt: DOMString; virtual;
     function  HasSource: Boolean; virtual;
     function  SourceExt: DOMString; virtual; abstract;
     procedure WriteIntf; virtual;
-    procedure WriteSource; virtual;
-    function  WriteSettingsFile: Boolean; virtual; abstract;
 
     procedure SetDirectory(const Directory: string);
     procedure SetRelHeaderDir(const RelDir: string);
@@ -3358,7 +3360,33 @@ begin
     FOnWrite(Fmt, Args);
 end;
 
-procedure TWSDLWriter.WriteToFile(const OutputFolder: String; aType: Integer);
+procedure TWSDLWriter.WriteToDisk;
+begin
+  if FDirectFolder > '' then
+    Exit;
+
+  { Write main source/header }
+  WriteToFile(0);
+
+  if (HasSource) then
+  begin
+    { Write source to stream }
+    Clear;
+    WriteSource;
+
+    { Write stream to disk }
+    WriteToFile(1);
+  end;
+
+  if AWriteSettings then
+  begin
+    Clear;
+    if (WriteSettingsFile) then
+      WriteToFile(2);
+  end;
+end;
+
+procedure TWSDLWriter.WriteToFile(aType: Integer);
 {$IFDEF UNICODE}
 var
   MS: TBailOutMemoryStream;
@@ -3392,24 +3420,21 @@ var
   Ext: WideString;
   Filename: WideString;
 begin
-  if FDirectFolder > '' then
-    Exit;
-
   for I := 0 to FBufferList.Count - 1 do
   begin
     case aType of
-      0:
+      0: // Header / main source
         begin
           if HasSource then
             Ext := IntfExt
           else
             Ext := SourceExt;
-          Filename := OutputFolder + GetNameSpaceOutFile(FBufferList[I]) + Ext;
+          Filename := FDirectory + FRelHeaderDir + GetNameSpaceOutFile(FBufferList[I]) + Ext;
         end;
-      1:
-        Filename := OutputFolder + GetNameSpaceOutFile(FBufferList[I]) + SourceExt;
-      2:
-        Filename := OutputFolder + 'WSDLImp.settings';
+      1: // 'Source' file
+        Filename := FDirectory + GetNameSpaceOutFile(FBufferList[I]) + SourceExt;
+      2: // Settings file
+        Filename := FDirectory + 'WSDLImp.settings';
     else
       raise Exception.Create('Invalid file writing type');
     end;
@@ -4536,6 +4561,36 @@ begin
   WriteStr(TypeInfoPad+ sInfoEnd);
 end;
 
+procedure TWSDLWriter.WritePreview(AWriteSettings: boolean; Info: TStrings);
+var
+  Ext: DOMString;
+  I: Integer;
+begin
+  Info.BeginUpdate;
+  try
+    Info.Add('The following files will be created:');
+
+    for I := 0 to FBufferList.Count - 1 do
+    begin
+      // Header / main source
+      if HasSource then
+        Ext := IntfExt
+      else
+        Ext := SourceExt;
+      Info.Add('- ' + FDirectory + FRelHeaderDir + GetNameSpaceOutFile(FBufferList[I]) + Ext);
+
+      // 'Source' file
+      if HasSource then
+        Info.Add(FDirectory + GetNameSpaceOutFile(FBufferList[I]) + SourceExt);
+    end;
+
+    if AWriteSettings then
+      Info.Add(FDirectory + 'WSDLImp.settings');
+  finally
+    Info.EndUpdate;
+  end;
+end;
+
 procedure TWSDLWriter.WriteInterfaceInfo(const WSDLPortType: IWSDLPortType);
   procedure WriteData(const key, value: DOMString);
   begin
@@ -4794,12 +4849,12 @@ end;
 { Writers that have special requirements for filenames can override this method }
 procedure TWSDLWriter.SetDirectory(const Directory: String);
 begin
-  FDirectory := Directory;
+  FDirectory := IncludeTrailingPathDelimiter(Directory);
 end;
 
 procedure  TWSDLWriter.SetRelHeaderDir(const RelDir: string);
 begin
-  FRelHeaderDir := RelDir;
+  FRelHeaderDir := IncludeTrailingPathDelimiter(RelDir);
 end;
 
 procedure TWSDLWriter.SetFilePerNamespace(Value: Boolean);

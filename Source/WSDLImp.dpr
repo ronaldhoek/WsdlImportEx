@@ -111,8 +111,6 @@ procedure GenProxy(const WSDLFileName: String; OutFile: String;
                    const Directory, RelHdrDir, StringType, BaseClassName: string;
                    LangGen: CodeGen; const UDDIInfo: IImportBindingInfo;
                    AWriteSettings: Boolean);
-type
-  TWSDLWriterClass = class of TWSDLWriter;
 const
   bDirectWrite: boolean = true;
   bWriteFilePerNamespace: boolean = true;
@@ -176,24 +174,7 @@ begin
     Writer.WriteIntf;
 
     { Write stream to disk }
-    Writer.WriteToFile(Directory + RelHdrDir, 0);
-
-    if (Writer.HasSource) then
-    begin
-      { Write source to stream }
-      Writer.Clear;
-      Writer.WriteSource;
-
-      { Write stream to disk }
-      Writer.WriteToFile(Directory, 1);
-    end;
-
-    if AWriteSettings then
-    begin
-      Writer.Clear;
-      if (Writer.WriteSettingsFile) then
-        Writer.WriteToFile(Directory, 2);
-    end;
+    Writer.WriteToDisk(AWriteSettings);
   finally
     Writer.Free;
   end;
