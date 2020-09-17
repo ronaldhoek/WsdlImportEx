@@ -1,0 +1,48 @@
+﻿	<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+		<PropertyGroup>
+			<ProjectGuid>{7CFE496E-01DD-4910-BF47-82F90426EF51}</ProjectGuid>
+		</PropertyGroup>
+		<ItemGroup>
+			<Projects Include="Source\WSDLImp.dproj">
+				<Dependencies/>
+			</Projects>
+			<Projects Include="Source\WSDLImpUI.dproj">
+				<Dependencies/>
+			</Projects>
+		</ItemGroup>
+		<ProjectExtensions>
+			<Borland.Personality>Default.Personality.12</Borland.Personality>
+			<Borland.ProjectType/>
+			<BorlandProject>
+				<Default.Personality/>
+			</BorlandProject>
+		</ProjectExtensions>
+		<Target Name="WSDLImp">
+			<MSBuild Projects="Source\WSDLImp.dproj"/>
+		</Target>
+		<Target Name="WSDLImp:Clean">
+			<MSBuild Targets="Clean" Projects="Source\WSDLImp.dproj"/>
+		</Target>
+		<Target Name="WSDLImp:Make">
+			<MSBuild Targets="Make" Projects="Source\WSDLImp.dproj"/>
+		</Target>
+		<Target Name="WSDLImpUI">
+			<MSBuild Projects="Source\WSDLImpUI.dproj"/>
+		</Target>
+		<Target Name="WSDLImpUI:Clean">
+			<MSBuild Targets="Clean" Projects="Source\WSDLImpUI.dproj"/>
+		</Target>
+		<Target Name="WSDLImpUI:Make">
+			<MSBuild Targets="Make" Projects="Source\WSDLImpUI.dproj"/>
+		</Target>
+		<Target Name="Build">
+			<CallTarget Targets="WSDLImp;WSDLImpUI"/>
+		</Target>
+		<Target Name="Clean">
+			<CallTarget Targets="WSDLImp:Clean;WSDLImpUI:Clean"/>
+		</Target>
+		<Target Name="Make">
+			<CallTarget Targets="WSDLImp:Make;WSDLImpUI:Make"/>
+		</Target>
+		<Import Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')" Project="$(BDS)\Bin\CodeGear.Group.Targets"/>
+	</Project>
