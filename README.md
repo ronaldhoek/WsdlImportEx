@@ -16,4 +16,4 @@ WORK IN PROGRESS!!!
 
 ## Known issues
 - Seperate files don't reference eachother (uses clause)
-- Duplicate files will be overwriten (classes won't be appended)
+- Existing files will be overwriten (classes won't be appended)
