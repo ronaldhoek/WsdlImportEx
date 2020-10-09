@@ -5,7 +5,7 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls,
-  Vcl.ActnList, WSDLModelIntf, Vcl.Grids, Vcl.ValEdit;
+  Vcl.ActnList, WSDLModelIntf, Vcl.Grids, Vcl.ValEdit, Vcl.ExtCtrls;
 
 type
   // Hack to override 'AdjustColWidths'
@@ -23,18 +23,23 @@ type
     actnPrev: TAction;
     alMain: TActionList;
     btnBatchEdit: TButton;
+    btnCheck: TButton;
     btnNext: TButton;
     btnPrev: TButton;
     btnSelectFile: TButton;
     btnSelectFolder: TButton;
+    btnTypesFindNonEdited: TButton;
+    cbFilePerNamespace: TCheckBox;
     dlgSelectFile: TOpenDialog;
     dlgSelectFolder: TFileOpenDialog;
     edtAuthPassword: TEdit;
     edtAuthUsername: TEdit;
+    edtFilter: TEdit;
     edtOutputfolder: TEdit;
     edtProxy: TEdit;
     edtURI: TEdit;
     gbAuth: TGroupBox;
+    gbOptions: TGroupBox;
     lbFeedback: TListBox;
     lblAuthPassword: TLabel;
     lblAuthUsername: TLabel;
@@ -42,28 +47,31 @@ type
     lblProxy: TLabel;
     lblTypeMapping: TLabel;
     lblURI: TLabel;
+    lbWritePreview: TListBox;
     pgctrlMain: TPageControl;
     stsTypeMapping: TStatusBar;
     tbshtPreview: TTabSheet;
     tbshtStart: TTabSheet;
     tbshtTypeMapping: TTabSheet;
+    tmrUpdateFilter: TTimer;
     vleTypeNameMapping: TValueListEditor;
-    lbWritePreview: TListBox;
-    gbOptions: TGroupBox;
-    cbFilePerNamespace: TCheckBox;
     procedure actnNextExecute(Sender: TObject);
     procedure actnNextUpdate(Sender: TObject);
     procedure actnPrevExecute(Sender: TObject);
     procedure actnPrevUpdate(Sender: TObject);
     procedure btnBatchEditClick(Sender: TObject);
+    procedure btnCheckClick(Sender: TObject);
     procedure btnSelectFileClick(Sender: TObject);
     procedure btnSelectFolderClick(Sender: TObject);
+    procedure btnTypesFindNonEditedClick(Sender: TObject);
+    procedure edtFilterChange(Sender: TObject);
     procedure edtURIChange(Sender: TObject);
     procedure ExecuteWriter(aPreview: Boolean);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure FormShow(Sender: TObject);
     procedure pgctrlMainChange(Sender: TObject);
     procedure pgctrlMainChanging(Sender: TObject; var AllowChange: Boolean);
+    procedure tmrUpdateFilterTimer(Sender: TObject);
     procedure vleTypeNameMappingGetEditText(Sender: TObject; ACol, ARow: Integer;
         var Value: string);
     procedure vleTypeNameMappingSetEditText(Sender: TObject; ACol, ARow: Integer;
@@ -75,6 +83,7 @@ type
     FTypeMappingDefaults: TStrings;
     FWSDLImportInfo: TWSDLImportInfo;
     FWSDLTypes: IWSDLTypeArray;
+    procedure CheckDuplicatedTypeNames;
     procedure CheckStartPage;
     procedure CheckTypeMapping;
     function GetDirectory: string;
@@ -85,6 +94,7 @@ type
     procedure InitTypeMapping;
     procedure LoadPreviousSettings;
     procedure SaveCurrentSettings;
+    procedure UpdateTypeEditor(aInit: boolean);
   protected
     procedure Loaded; override;
     procedure WriteFeedback(const Message: String; const Args: array of const);
@@ -270,16 +280,90 @@ begin
   end;
 end;
 
+procedure TfrmMain.btnCheckClick(Sender: TObject);
+begin
+  CheckDuplicatedTypeNames;
+end;
+
 procedure TfrmMain.btnSelectFileClick(Sender: TObject);
 begin
+  if FileExists(edtURI.Text) then
+    dlgSelectFile.FileName := edtURI.Text;
+  if DirectoryExists(ExtractFilePath(edtURI.Text)) then
+    dlgSelectFile.InitialDir := ExtractFilePath(edtURI.Text);
+
   if dlgSelectFile.Execute then
     edtURI.Text := dlgSelectFile.FileName;
 end;
 
 procedure TfrmMain.btnSelectFolderClick(Sender: TObject);
 begin
+  if DirectoryExists(edtOutputfolder.Text) then
+    dlgSelectFolder.FileName := edtOutputfolder.Text;
+  if DirectoryExists(ExtractFilePath(edtOutputfolder.Text)) then
+    dlgSelectFolder.FileName := ExtractFilePath(edtOutputfolder.Text);
+
   if dlgSelectFolder.Execute then
     edtOutputfolder.Text := dlgSelectFolder.FileName;
+end;
+
+procedure TfrmMain.btnTypesFindNonEditedClick(Sender: TObject);
+var
+  curtype: IWSDLType;
+  iCurRow: Integer;
+  iStartRow: Integer;
+begin
+  iStartRow := vleTypeNameMapping.Row;
+  iCurRow := iStartRow;
+  while iCurRow < vleTypeNameMapping.RowCount do
+  begin
+    curtype := GetWSDLType(iCurRow - 1);
+    if curtype.Name = curtype.LangName then
+    begin
+      vleTypeNameMapping.Row := iCurRow;
+      vleTypeNameMapping.SetFocus;
+      Exit;
+    end;
+    Inc(iCurRow);
+  end;
+
+  ShowMessage('No more items found');
+end;
+
+procedure TfrmMain.CheckDuplicatedTypeNames;
+var
+  I: Integer;
+  iItem: Integer;
+  sl: TStringList;
+  wdsltype: IWSDLType;
+begin
+  // Check duplicate typenames
+  sl := TStringList.Create;
+  try
+    sl.Sorted := True;
+    sl.Duplicates := dupIgnore;
+
+    // Check all types - ignore filter!
+    for wdsltype in FWSDLTypes do
+      if wdsltype.DataKind <> wtNotDefined then
+    begin
+      // Count typenames
+      iItem := sl.Add(wdsltype.LangName);
+      sl.Objects[iItem] := Pointer(NativeInt(sl.Objects[iItem]) + 1);
+    end;
+
+    sl.Sorted := False;
+    for I := sl.Count - 1 downto 0 do
+      if NativeInt(sl.Objects[I]) = 1 then
+        sl.Delete(I)
+      else
+        sl[I] := '- ' + sl[I];
+
+    if sl.Count > 0 then
+      Raise Exception.Create('Duplicate typenames found:' + sLineBreak + sl.Text);
+  finally
+    sl.Free;
+  end;
 end;
 
 procedure TfrmMain.CheckStartPage;
@@ -299,7 +383,7 @@ end;
 
 procedure TfrmMain.CheckTypeMapping;
 begin
-  // TODO -cMM: TfrmMain.CheckTypeMapping default body inserted
+  CheckDuplicatedTypeNames;
 end;
 
 constructor TfrmMain.Create(AOwner: TComponent);
@@ -312,6 +396,12 @@ destructor TfrmMain.Destroy;
 begin
   FreeAndNil(FTypeMappingDefaults);
   inherited;
+end;
+
+procedure TfrmMain.edtFilterChange(Sender: TObject);
+begin
+  tmrUpdateFilter.Enabled := False;
+  tmrUpdateFilter.Enabled := True;
 end;
 
 procedure TfrmMain.edtURIChange(Sender: TObject);
@@ -413,16 +503,13 @@ end;
 procedure TfrmMain.InitTypeMapping;
 var
   Flag: TImporterFlags;
-  list: TStringList;
   OutFile: string;
-  sTypeName: String;
-  sFullTypename: String;
-  wdsltype: IWSDLType;
-  WriterClass: TWSDLWriterClass;
 begin
   if FImporter = nil then
   try
     vleTypeNameMapping.Strings.Clear;
+    edtFilter.Clear;
+    tmrUpdateFilter.Enabled := False;
 
     OutFile := '';
 //    { Default to Pascal }
@@ -452,36 +539,11 @@ begin
 //    if (LangGen = CppGen) then
 //      WriterClass := TWSDLCppWriter
 //    else
-      WriterClass := TWSDLPasWriter;
-
-    // Init typenames
-    WriterClass.Create(FImporter).Free;
+//      WriterClass := TWSDLPasWriter;
 
     // Gets 'all' types (require reference to ensure interface lifetime)
     FWSDLTypes := FImporter.GetTypes;
-
-    list := vleTypeNameMapping.Strings as TStringList;
-    list.BeginUpdate;
-    try
-      for wdsltype in FWSDLTypes do
-        if wdsltype.DataKind <> wtNotDefined then
-      begin
-        sFullTypename := wdsltype.Namespace + sNamespaceTypeSeparator + wdsltype.Name;
-        sTypeName := FTypeMappingDefaults.Values[sFullTypename];
-        if sTypeName = '' then
-          sTypeName := wdsltype.LangName
-        else
-          wdsltype.LangName := sTypeName;
-
-        list.AddObject(sFullTypename + list.NameValueSeparator + sTypeName, Pointer(wdsltype) );
-      end;
-
-      list.Sort;
-    finally
-      list.EndUpdate;
-    end;
-
-    stsTypeMapping.SimpleText := 'Type count: ' + IntToStr(vleTypeNameMapping.Strings.Count);
+    UpdateTypeEditor(True);
   except
     FImporter := nil;
     vleTypeNameMapping.Strings.Clear;
@@ -574,6 +636,56 @@ begin
     UpdateFile; // Don't forget this...
   finally
     Free;
+  end;
+end;
+
+procedure TfrmMain.tmrUpdateFilterTimer(Sender: TObject);
+begin
+  (Sender as TTimer).Enabled := False;
+  UpdateTypeEditor(False);
+end;
+
+procedure TfrmMain.UpdateTypeEditor(aInit: boolean);
+var
+  list: TStringList;
+  sFilter: String;
+  sTypeName: String;
+  sFullTypename: String;
+  wdsltype: IWSDLType;
+begin
+  sFilter := edtFilter.Text;
+  try
+    list := vleTypeNameMapping.Strings as TStringList;
+    list.BeginUpdate;
+    try
+      list.Clear;
+      for wdsltype in FWSDLTypes do
+        if (wdsltype.DataKind <> wtNotDefined) and
+           ((sFilter = '') or ContainsText(wdsltype.LangName, sFilter)) then
+      begin
+        sFullTypename := wdsltype.Namespace + sNamespaceTypeSeparator + wdsltype.Name;
+
+        if aInit then
+        begin
+          sTypeName := FTypeMappingDefaults.Values[sFullTypename];
+          if sTypeName = '' then
+            sTypeName := wdsltype.LangName
+          else
+            wdsltype.LangName := sTypeName;
+        end;
+
+        list.AddObject(sFullTypename + list.NameValueSeparator + wdsltype.LangName, Pointer(wdsltype) );
+      end;
+
+      list.Sort;
+    finally
+      list.EndUpdate;
+    end;
+
+    stsTypeMapping.SimpleText := 'Type count: ' + IntToStr(vleTypeNameMapping.Strings.Count);
+  except
+    vleTypeNameMapping.Strings.Clear;
+    raise;
   end;
 end;
 
