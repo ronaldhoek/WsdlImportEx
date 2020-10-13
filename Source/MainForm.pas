@@ -35,6 +35,7 @@ type
     edtAuthPassword: TEdit;
     edtAuthUsername: TEdit;
     edtFilter: TEdit;
+    edtOutputFilename: TEdit;
     edtOutputfolder: TEdit;
     edtProxy: TEdit;
     edtURI: TEdit;
@@ -43,6 +44,7 @@ type
     lbFeedback: TListBox;
     lblAuthPassword: TLabel;
     lblAuthUsername: TLabel;
+    lblOutputFilename: TLabel;
     lblOutputfolder: TLabel;
     lblProxy: TLabel;
     lblTypeMapping: TLabel;
@@ -55,6 +57,7 @@ type
     tbshtTypeMapping: TTabSheet;
     tmrUpdateFilter: TTimer;
     vleTypeNameMapping: TValueListEditor;
+    vleTypeNamespaces: TValueListEditor;
     procedure actnNextExecute(Sender: TObject);
     procedure actnNextUpdate(Sender: TObject);
     procedure actnPrevExecute(Sender: TObject);
@@ -65,6 +68,7 @@ type
     procedure btnSelectFolderClick(Sender: TObject);
     procedure btnTypesFindNonEditedClick(Sender: TObject);
     procedure edtFilterChange(Sender: TObject);
+    procedure edtOutputFilenameChange(Sender: TObject);
     procedure edtURIChange(Sender: TObject);
     procedure ExecuteWriter(aPreview: Boolean);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -76,8 +80,11 @@ type
         var Value: string);
     procedure vleTypeNameMappingSetEditText(Sender: TObject; ACol, ARow: Integer;
         const Value: string);
+    procedure vleTypeNamespacesSetEditText(Sender: TObject; ACol, ARow: Integer;
+        const Value: string);
   private
     FImporter: IWSDLImporter;
+    FNamespaceFilemappings: TStrings;
     FPreviewOK: Boolean;
     FSettingLoaded: Boolean;
     FTypeMappingDefaults: TStrings;
@@ -85,7 +92,6 @@ type
     FWSDLTypes: IWSDLTypeArray;
     procedure CheckDuplicatedTypeNames;
     procedure CheckStartPage;
-    procedure CheckTypeMapping;
     function GetDirectory: string;
     function GetIniFilename: string;
     function GetRelHdrDir: string;
@@ -119,6 +125,7 @@ const
   sIdentPosLeft = 'PosLeft';
   sIdentPosTop = 'PosTop';
   sIdentTypeNameColWidth = 'TypeNameColWidth';
+  sIdentFilenameColWidth = 'FilenameColWidth';
   sIdentFilePerNamespace = 'FilePerNamespace';
   sNamespaceTypeSeparator = '$';
 
@@ -130,6 +137,7 @@ const
   sIdentOutputfolder = 'Outputfolder';
 
   sSectionTypeMappingDefaults = 'TypeMappingDefaults';
+  sSectionNamespaceFilemappings = 'NamespaceFilemappings';
 
 function isHTTP(const Name: string): boolean;
 const
@@ -381,20 +389,17 @@ begin
   end;
 end;
 
-procedure TfrmMain.CheckTypeMapping;
-begin
-  CheckDuplicatedTypeNames;
-end;
-
 constructor TfrmMain.Create(AOwner: TComponent);
 begin
   FTypeMappingDefaults := TStringList.Create;
+  FNamespaceFilemappings := TStringList.Create;
   inherited;
 end;
 
 destructor TfrmMain.Destroy;
 begin
   FreeAndNil(FTypeMappingDefaults);
+  FreeAndNil(FNamespaceFilemappings);
   inherited;
 end;
 
@@ -402,6 +407,11 @@ procedure TfrmMain.edtFilterChange(Sender: TObject);
 begin
   tmrUpdateFilter.Enabled := False;
   tmrUpdateFilter.Enabled := True;
+end;
+
+procedure TfrmMain.edtOutputFilenameChange(Sender: TObject);
+begin
+  FImporter := nil;
 end;
 
 procedure TfrmMain.edtURIChange(Sender: TObject);
@@ -420,8 +430,7 @@ begin
   if aPreview then
     FPreviewOK := False;
 
-  if FImporter = nil then
-    InitTypeMapping; // Just in case ;)
+  InitTypeMapping; // Just in case ;)
 
   { Here we determine the writer }
 //  if (LangGen = CppGen) then
@@ -443,15 +452,24 @@ begin
 
     { Create a file per namespace }
     Writer.SetFilePerNamespace(cbFilePerNamespace.Checked);
+    if cbFilePerNamespace.Checked then
+      Writer.SetNamespaceFilenames(vleTypeNamespaces.Strings);
 
     { Write interface to stream}
     Writer.WriteIntf;
 
      { Write stream to disk }
     if aPreview then
-    begin
+    try
+      CheckDuplicatedTypeNames;
       Writer.WritePreview(AWriteSettings, lbWritePreview.Items);
       FPreviewOK := True // No errors?
+    except
+      on E: Exception do
+      begin
+        lbWritePreview.Items.Add('ERROR: ' + E.Message);
+        raise;
+      end;
     end else
       Writer.WriteToDisk(AWriteSettings);
 
@@ -508,10 +526,11 @@ begin
   if FImporter = nil then
   try
     vleTypeNameMapping.Strings.Clear;
+    vleTypeNamespaces.Strings.Clear;
     edtFilter.Clear;
     tmrUpdateFilter.Enabled := False;
 
-    OutFile := '';
+    OutFile := edtOutputFilename.Text;
 //    { Default to Pascal }
 //    LangGen := PasGen;
 
@@ -547,6 +566,7 @@ begin
   except
     FImporter := nil;
     vleTypeNameMapping.Strings.Clear;
+    vleTypeNamespaces.Strings.Clear;
     Raise;
   end;
 end;
@@ -570,6 +590,7 @@ begin
     Self.Height := ReadInteger(sSectionFormState, sIdentHeight , Self.Height);
 
     vleTypeNameMapping.ColWidths[1] := ReadInteger(sSectionFormState, sIdentTypeNameColWidth, vleTypeNameMapping.ColWidths[1]);
+    vleTypeNamespaces.ColWidths[1] := ReadInteger(sSectionFormState, sIdentFilenameColWidth, vleTypeNamespaces.ColWidths[1]);
 
     // Start
     edtURI.Text := ReadString(sSectionStart, sIdentURI, '');
@@ -579,6 +600,9 @@ begin
 
     // Type mappings
     ReadSectionValues(sSectionTypeMappingDefaults, FTypeMappingDefaults);
+
+    // Namespace mappings
+    ReadSectionValues(sSectionNamespaceFilemappings, FNamespaceFilemappings);
   finally
     Free;
   end;
@@ -599,8 +623,6 @@ begin
   try
     if pgctrlMain.ActivePage = tbshtStart then
       CheckStartPage
-    else if pgctrlMain.ActivePage = tbshtTypeMapping then
-      CheckTypeMapping
   except
     AllowChange := False;
     Application.HandleException(Self);
@@ -621,6 +643,7 @@ begin
     WriteInteger(sSectionFormState, sIdentHeight , Self.Height);
 
     WriteInteger(sSectionFormState, sIdentTypeNameColWidth, vleTypeNameMapping.ColWidths[1]);
+    WriteInteger(sSectionFormState, sIdentFilenameColWidth, vleTypeNamespaces.ColWidths[1]);
 
     // Start
     WriteString(sSectionStart, sIdentURI, edtURI.Text);
@@ -632,6 +655,11 @@ begin
     list := vleTypeNameMapping.Strings;
     for I := 0 to list.Count - 1 do
       WriteString(sSectionTypeMappingDefaults, list.Names[I], list.ValueFromIndex[I]);
+
+    // Namespace mappings
+    list := vleTypeNamespaces.Strings;
+    for I := 0 to list.Count - 1 do
+      WriteString(sSectionNamespaceFilemappings, list.Names[I], list.ValueFromIndex[I]);
 
     UpdateFile; // Don't forget this...
   finally
@@ -647,39 +675,51 @@ end;
 
 procedure TfrmMain.UpdateTypeEditor(aInit: boolean);
 var
-  list: TStringList;
+  list, listNS: TStringList;
   sFilter: String;
-  sTypeName: String;
+  s: String;
   sFullTypename: String;
   wdsltype: IWSDLType;
 begin
   sFilter := edtFilter.Text;
   try
     list := vleTypeNameMapping.Strings as TStringList;
+    listNS := vleTypeNamespaces.Strings as TStringList;
     list.BeginUpdate;
+    listNS.BeginUpdate;
     try
       list.Clear;
       for wdsltype in FWSDLTypes do
-        if (wdsltype.DataKind <> wtNotDefined) and
-           ((sFilter = '') or ContainsText(wdsltype.LangName, sFilter)) then
+        if (wdsltype.DataKind <> wtNotDefined) then
       begin
-        sFullTypename := wdsltype.Namespace + sNamespaceTypeSeparator + wdsltype.Name;
-
-        if aInit then
+        if (sFilter = '') or ContainsText(wdsltype.LangName, sFilter) then
         begin
-          sTypeName := FTypeMappingDefaults.Values[sFullTypename];
-          if sTypeName = '' then
-            sTypeName := wdsltype.LangName
-          else
-            wdsltype.LangName := sTypeName;
+          sFullTypename := wdsltype.Namespace + sNamespaceTypeSeparator + wdsltype.Name;
+
+          if aInit then
+          begin
+            s := FTypeMappingDefaults.Values[sFullTypename];
+            if s > '' then
+              wdsltype.LangName := s;
+          end;
+
+          list.AddObject(sFullTypename + list.NameValueSeparator + wdsltype.LangName, Pointer(wdsltype) );
         end;
 
-        list.AddObject(sFullTypename + list.NameValueSeparator + wdsltype.LangName, Pointer(wdsltype) );
+        // Namespaces
+        if aInit and (listNS.IndexOfName(wdsltype.Namespace) = -1) then
+        begin
+          s := FNamespaceFilemappings.Values[wdsltype.Namespace];
+          if s = '' then s := GetValidFilenameByNamespace(wdsltype.Namespace);
+          listNS.Add(wdsltype.Namespace + list.NameValueSeparator + s);
+        end;
       end;
 
       list.Sort;
+      listNS.Sort;
     finally
       list.EndUpdate;
+      listNS.EndUpdate;
     end;
 
     stsTypeMapping.SimpleText := 'Type count: ' + IntToStr(vleTypeNameMapping.Strings.Count);
@@ -701,6 +741,13 @@ procedure TfrmMain.vleTypeNameMappingSetEditText(Sender: TObject; ACol, ARow:
 begin
   if (ACol = 1) and (vleTypeNameMapping.Strings.Count >= ARow) then
     GetWSDLType(ARow - 1).LangName := Value;
+end;
+
+procedure TfrmMain.vleTypeNamespacesSetEditText(Sender: TObject; ACol, ARow:
+    Integer; const Value: string);
+begin
+  if (ACol = 1) and (vleTypeNamespaces.Strings.Count >= ARow) then
+    FNamespaceFilemappings.Values[vleTypeNamespaces.Keys[ARow]] := Value;
 end;
 
 procedure TfrmMain.WriteFeedback(const Message: String;

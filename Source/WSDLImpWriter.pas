@@ -231,8 +231,10 @@ type
     FBufferList: TStringList;
     FDirectFolder: string;
     FFilePerNamespace: Boolean;
+    FNamespaceFilenames: TStrings;
     FOutFile: string;
     function GetNameSpaceBuffer(const aNameSpace: string): TStream;
+    function HasUsefullContent(const aNameSpace: string): boolean;
     procedure WriteToFile(aType: Integer);
   protected
     FCurNameSpace: string;
@@ -279,7 +281,7 @@ type
 
     { Routines to help with namespace specific data }
     function GetTypesByNameSpace(const aNameSpace: string): IWSDLTypeArray;
-    function GetNameSpaceOutFile(aNameSpace: string): string;
+    function GetNameSpaceOutFile(const aNameSpace: string): string;
 
     { Routines that *MUST* be provided by individual writers }
     procedure MapTypes(const WSDLTypeArray: IWSDLTypeArray); virtual;
@@ -340,6 +342,7 @@ type
     procedure SetDirectory(const Directory: string);
     procedure SetRelHeaderDir(const RelDir: string);
     procedure SetFilePerNamespace(Value: Boolean);
+    procedure SetNamespaceFilenames(Value: TStrings);
 
     { Routines that *COULD* be overridden by individual writers }
     procedure WriteForwards; virtual;
@@ -463,7 +466,8 @@ const
 
 
 function  GetOutFileName(const FileName: string): string;
-function  GetValidIdent(const Ident: string): string;
+function GetValidFilenameByNamespace(const Namespace: string): string;
+function GetValidIdent(const Ident: string; UnitName: Boolean): string;
 function  SubstituteStrings(const InputString: DOMString; const SubString: DOMString;
                             const Replacement: DOMString): DOMString;
 function  UnwindType(const WSDLType: IWSDLType; ClsOnly: Boolean = False): IWSDLType;
@@ -549,6 +553,7 @@ type
   { Memorystream, which writes to disk when exceeding memmory usages }
   TBailOutMemoryStream = class(TMemoryStream)
   private
+    FHasUsefullContent: Boolean;
     FTempFile: THandleStream; { File stream as virtual memory }
     FTempFileName: string;
   protected
@@ -1029,10 +1034,53 @@ end;
 function GetOutFileName(const FileName: string): string;
 begin
   { BB: Improve filename generation }
-  Result := GetValidIdent(ExtractFileNameEx(FileName));
+  Result := GetValidIdent(ExtractFileNameEx(FileName), True);
 end;
 
-function GetValidIdent(const Ident: string): string;
+function GetValidFilenameByNamespace(const Namespace: string): string;
+const
+  sFileDelphiFilenameCharacters = [
+    'a'..'z','A'..'Z','0'..'9'
+    {$IFDEF DOTTED_UNIT_NAMES},'.'{$ENDIF} ];
+var
+  I: Integer;
+{$IFDEF DOTTED_UNIT_NAMES}
+  s: TStrings;
+{$ENDIF}
+begin
+  Result := StringReplace(NameSpace, 'http://', '', [rfIgnoreCase]);
+  Result := StringReplace(Result, 'https://', '', [rfIgnoreCase]);
+
+  Result := StringReplace(Result, '/', '.', [rfReplaceAll]);
+  Result := StringReplace(Result, '..', '.', [rfReplaceAll]);
+
+  for I := 1 to Length(Result) do
+    if not (Result[I] in sFileDelphiFilenameCharacters) then
+      Result[I] := '_';
+
+{$IFDEF DOTTED_UNIT_NAMES}
+  // Check numeric value between 'dots'
+  s := TStringList.Create;
+  try
+    s.Delimiter := '.';
+    s.StrictDelimiter := True;
+    s.DelimitedText := Result;
+
+    // Check partial strings starting with numeric character
+    for I := 0 to s.Count - 1 do
+      if s[I][1] in ['0'..'9'] then
+        s[I] := '_' + s[I];
+
+    Result := s.DelimitedText;
+  finally
+    s.Free;
+  end;
+{$ENDIF}
+
+  Result := StringReplace(Result, '__', '_', [rfReplaceAll]);
+end;
+
+function GetValidIdent(const Ident: string; UnitName: Boolean): string;
 const
   Alpha = ['A'..'Z', 'a'..'z', '_'];
   AlphaNumeric = Alpha + ['0'..'9'];
@@ -1053,6 +1101,7 @@ begin
   for I := 2 to Length(Result) do
   begin
     if not CharInSet(Result[I], AlphaNumeric) then
+    {$IFDEF DOTTED_UNIT_NAMES}if (not UnitName) or (Result[I] <> '.') then{$ENDIF}
       Result[I] := '_';
   end;
 end;
@@ -3299,6 +3348,7 @@ begin
   for I := 0 to FBufferList.Count - 1 do
     FBufferList.Objects[I].Free;
   FreeAndNil(FBufferList);
+  FreeAndNil(FNamespaceFilenames);
   inherited Destroy;
 end;
 
@@ -3312,7 +3362,7 @@ begin
   ValidatePortTypes(WSDLImporter.GetPortTypes);
   if (OutFileName = '') or (OutFIleName = '_') then
     OutFileName := WSDLImporter.DefName;
-  SetOutFile(GetValidIdent(OutFileName), False);
+  SetOutFile(GetValidIdent(OutFileName, True), False);
 end;
 
 procedure TWSDLWriter.WriteStr(const Str: string);
@@ -3421,6 +3471,7 @@ var
   Filename: WideString;
 begin
   for I := 0 to FBufferList.Count - 1 do
+    if HasUsefullContent(FBufferList[I]) then
   begin
     case aType of
       0: // Header / main source
@@ -4493,7 +4544,8 @@ begin
       WriteFmt(sWSDLInfoEnd, ['', GetImporterOptions()])
     else
       WriteFmt(sWSDLInfoEnd, [DateTimeToStr(Now), RevString]);
-  end;
+  end else
+    WriteFmt(sNamespaceInfo + sLineBreak, [FCurNameSpace]);
 end;
 
 procedure TWSDLWriter.WriteComplexClassInfo(const WSDLType: IWSDLType);
@@ -4571,6 +4623,7 @@ begin
     Info.Add('The following files will be created:');
 
     for I := 0 to FBufferList.Count - 1 do
+      if HasUsefullContent(FBufferList[I]) then
     begin
       // Header / main source
       if HasSource then
@@ -4658,10 +4711,16 @@ begin
       end;
 
       if FCurNameSpace <> sWDSLProxyNamespace then
-        WriteTypes;      // Type - namespace/file specific
+      begin
+        if WriteTypes > 0 then // Type - namespace/file specific
+          (GetNameSpaceBuffer(FCurNameSpace) as TBailOutMemoryStream).FHasUsefullContent := True;
+      end;
 
       if (FCurNameSpace = '') or (FCurNameSpace = sWDSLProxyNamespace) then
+      begin
         WriteInterfaces; // Proxy interfaces
+        (GetNameSpaceBuffer(FCurNameSpace) as TBailOutMemoryStream).FHasUsefullContent := True;
+      end;
 
       if not HasSource then
       begin
@@ -4860,6 +4919,23 @@ end;
 procedure TWSDLWriter.SetFilePerNamespace(Value: Boolean);
 begin
   FFilePerNamespace := Value;
+end;
+
+procedure TWSDLWriter.SetNamespaceFilenames(Value: TStrings);
+var
+  I: Integer;
+begin
+  if FNamespaceFilenames = nil then
+  begin
+    FNamespaceFilenames := TStringList.Create;
+    FNamespaceFilenames.StrictDelimiter := True;
+    FNamespaceFilenames.NameValueSeparator := #9;
+  end else
+    FNamespaceFilenames.Clear;
+
+  FNamespaceFilenames.Capacity := Value.Count;
+  for I := 0 to Value.Count - 1 do
+    FNamespaceFilenames.Add(Value.Names[I] + FNamespaceFilenames.NameValueSeparator + Value.ValueFromIndex[I]);
 end;
 
 procedure TWSDLWriter.SetOutFile(const outFile: string; CheckProject: Boolean);
@@ -5564,7 +5640,7 @@ var
 begin
   { Validate identifiers }
   if not IsValidIdent(WSDLItem.Name) then
-    WSDLItem.LangName := GetValidIdent(WSDLItem.Name);
+    WSDLItem.LangName := GetValidIdent(WSDLItem.Name, False);
 
   { Check against other reserved words }
   NewName := '';
@@ -5870,51 +5946,17 @@ begin
   Result := FBufferList.Objects[I] as TMemoryStream;
 end;
 
-function TWSDLWriter.GetNameSpaceOutFile(aNameSpace: string): string;
-const
-  sFileDelphiFilenameCharacters = [
-    'a'..'z','A'..'Z','0'..'9'
-    {$IFDEF DOTTED_UNIT_NAMES},'.'{$ENDIF} ];
-var
-  I: Integer;
-{$IFDEF DOTTED_UNIT_NAMES}
-  s: TStrings;
-{$ENDIF}
+function TWSDLWriter.GetNameSpaceOutFile(const aNameSpace: string): string;
 begin
   if (aNameSpace > '') and (aNameSpace <> sWDSLProxyNamespace) then
   begin
-    aNameSpace := StringReplace(aNameSpace, 'http://', '', [rfIgnoreCase]);
-    aNameSpace := StringReplace(aNameSpace, 'https://', '', [rfIgnoreCase]);
-
-    aNameSpace := StringReplace(aNameSpace, '/', '.', [rfReplaceAll]);
-    aNameSpace := StringReplace(aNameSpace, '..', '.', [rfReplaceAll]);
-
-    for I := 1 to Length(aNameSpace) do
-      if not (aNameSpace[I] in sFileDelphiFilenameCharacters) then
-        aNameSpace[I] := '_';
-
-  {$IFDEF DOTTED_UNIT_NAMES}
-    // Check numeric value between 'dots'
-    s := TStringList.Create;
-    try
-      s.Delimiter := '.';
-      s.StrictDelimiter := True;
-      s.DelimitedText := aNameSpace;
-
-      // Check partial strings starting with numeric character
-      for I := 0 to s.Count - 1 do
-        if s[I][1] in ['0'..'9'] then
-          s[I] := '_' + s[I];
-
-      aNameSpace := s.DelimitedText;
-    finally
-      s.Free;
+    if FNamespaceFilenames = nil then
+      Result := GetValidFilenameByNamespace(aNameSpace)
+    else begin
+      Result := FNamespaceFilenames.Values[aNameSpace];
+      if Result = '' then
+        Result := GetValidFilenameByNamespace(aNameSpace);
     end;
-  {$ENDIF}
-
-    aNameSpace := StringReplace(aNameSpace, '__', '_', [rfReplaceAll]);
-
-    Result := aNameSpace;
   end else
     Result := OutFile;
 end;
@@ -5941,6 +5983,11 @@ begin
     if iCount < Length(types) then
       SetLength(Result, iCount);
   end;
+end;
+
+function TWSDLWriter.HasUsefullContent(const aNameSpace: string): boolean;
+begin
+  Result := (GetNameSpaceBuffer(aNameSpace) as TBailOutMemoryStream).FHasUsefullContent;
 end;
 
 { TWSDLItem }

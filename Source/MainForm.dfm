@@ -23,18 +23,13 @@ object frmMain: TfrmMain
     Top = 0
     Width = 619
     Height = 480
-    ActivePage = tbshtTypeMapping
+    ActivePage = tbshtStart
     Align = alClient
     TabOrder = 0
     OnChange = pgctrlMainChange
     OnChanging = pgctrlMainChanging
-    ExplicitWidth = 479
     object tbshtStart: TTabSheet
       Caption = 'Start'
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 471
-      ExplicitHeight = 0
       DesignSize = (
         611
         452)
@@ -54,18 +49,25 @@ object frmMain: TfrmMain
         Caption = 'Output folder'
         FocusControl = edtOutputfolder
       end
+      object lblOutputFilename: TLabel
+        Left = 3
+        Top = 209
+        Width = 135
+        Height = 13
+        Caption = 'Output filename (unit name)'
+        FocusControl = edtOutputFilename
+      end
       object edtURI: TEdit
         Left = 3
         Top = 24
-        Width = 523
+        Width = 574
         Height = 21
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 0
         OnChange = edtURIChange
-        ExplicitWidth = 383
       end
       object btnSelectFile: TButton
-        Left = 532
+        Left = 583
         Top = 24
         Width = 75
         Height = 22
@@ -73,19 +75,17 @@ object frmMain: TfrmMain
         Caption = 'Select file'
         TabOrder = 1
         OnClick = btnSelectFileClick
-        ExplicitLeft = 392
       end
       object gbAuth: TGroupBox
         Left = 3
         Top = 51
-        Width = 604
+        Width = 655
         Height = 109
         Anchors = [akLeft, akTop, akRight]
         Caption = 'Authentication (URL only)'
         TabOrder = 2
-        ExplicitWidth = 464
         DesignSize = (
-          604
+          655
           109)
         object lblAuthUsername: TLabel
           Left = 8
@@ -114,42 +114,38 @@ object frmMain: TfrmMain
         object edtAuthUsername: TEdit
           Left = 112
           Top = 21
-          Width = 480
+          Width = 531
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 0
-          ExplicitWidth = 340
         end
         object edtAuthPassword: TEdit
           Left = 112
           Top = 48
-          Width = 480
+          Width = 531
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 1
-          ExplicitWidth = 340
         end
         object edtProxy: TEdit
           Left = 112
           Top = 75
-          Width = 480
+          Width = 531
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 2
-          ExplicitWidth = 340
         end
       end
       object edtOutputfolder: TEdit
         Left = 3
         Top = 182
-        Width = 523
+        Width = 574
         Height = 21
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 3
-        ExplicitWidth = 383
       end
       object btnSelectFolder: TButton
-        Left = 532
+        Left = 583
         Top = 182
         Width = 75
         Height = 22
@@ -157,17 +153,15 @@ object frmMain: TfrmMain
         Caption = 'Select folder'
         TabOrder = 4
         OnClick = btnSelectFolderClick
-        ExplicitLeft = 392
       end
       object gbOptions: TGroupBox
-        Left = 3
-        Top = 209
-        Width = 604
+        Left = 4
+        Top = 252
+        Width = 655
         Height = 42
         Anchors = [akLeft, akTop, akRight]
         Caption = 'Options'
         TabOrder = 5
-        ExplicitWidth = 464
         object cbFilePerNamespace: TCheckBox
           Left = 11
           Top = 16
@@ -177,14 +171,19 @@ object frmMain: TfrmMain
           TabOrder = 0
         end
       end
+      object edtOutputFilename: TEdit
+        Left = 3
+        Top = 225
+        Width = 574
+        Height = 21
+        Anchors = [akLeft, akTop, akRight]
+        TabOrder = 6
+        OnChange = edtOutputFilenameChange
+      end
     end
     object tbshtTypeMapping: TTabSheet
       Caption = 'Type mapping'
       ImageIndex = 1
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 471
-      ExplicitHeight = 0
       DesignSize = (
         611
         452)
@@ -197,9 +196,9 @@ object frmMain: TfrmMain
       end
       object vleTypeNameMapping: TValueListEditor
         Left = 3
-        Top = 27
-        Width = 605
-        Height = 286
+        Top = 29
+        Width = 656
+        Height = 267
         Anchors = [akLeft, akTop, akRight, akBottom]
         KeyOptions = [keyUnique]
         TabOrder = 0
@@ -210,22 +209,21 @@ object frmMain: TfrmMain
         OnSetEditText = vleTypeNameMappingSetEditText
         ColWidths = (
           244
-          355)
+          406)
       end
       object stsTypeMapping: TStatusBar
         Left = 3
-        Top = 312
-        Width = 605
+        Top = 294
+        Width = 656
         Height = 18
         Align = alNone
         Anchors = [akLeft, akRight, akBottom]
         Panels = <>
         SimplePanel = True
-        ExplicitWidth = 465
       end
       object btnBatchEdit: TButton
         Left = 3
-        Top = 423
+        Top = 512
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -235,8 +233,8 @@ object frmMain: TfrmMain
       end
       object lbFeedback: TListBox
         Left = 3
-        Top = 328
-        Width = 605
+        Top = 417
+        Width = 656
         Height = 89
         Anchors = [akLeft, akRight, akBottom]
         ItemHeight = 13
@@ -244,7 +242,7 @@ object frmMain: TfrmMain
       end
       object btnTypesFindNonEdited: TButton
         Left = 84
-        Top = 423
+        Top = 512
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -254,7 +252,7 @@ object frmMain: TfrmMain
       end
       object btnCheck: TButton
         Left = 165
-        Top = 423
+        Top = 512
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -263,7 +261,7 @@ object frmMain: TfrmMain
         OnClick = btnCheckClick
       end
       object edtFilter: TEdit
-        Left = 487
+        Left = 538
         Top = 2
         Width = 121
         Height = 21
@@ -272,22 +270,36 @@ object frmMain: TfrmMain
         TextHint = '<filter>'
         OnChange = edtFilterChange
       end
+      object vleTypeNamespaces: TValueListEditor
+        Left = 3
+        Top = 312
+        Width = 656
+        Height = 99
+        Anchors = [akLeft, akRight, akBottom]
+        KeyOptions = [keyUnique]
+        Strings.Strings = (
+          '=')
+        TabOrder = 7
+        TitleCaptions.Strings = (
+          'Namespace'
+          'Filename')
+        OnSetEditText = vleTypeNamespacesSetEditText
+        ColWidths = (
+          240
+          410)
+      end
     end
     object tbshtPreview: TTabSheet
       Caption = 'Preview'
       ImageIndex = 2
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 471
-      ExplicitHeight = 0
       DesignSize = (
         611
         452)
       object lbWritePreview: TListBox
         Left = 3
         Top = 3
-        Width = 605
-        Height = 414
+        Width = 656
+        Height = 503
         Anchors = [akLeft, akTop, akRight, akBottom]
         ItemHeight = 13
         TabOrder = 0
@@ -295,24 +307,22 @@ object frmMain: TfrmMain
     end
   end
   object btnPrev: TButton
-    Left = 452
-    Top = 447
+    Left = 503
+    Top = 536
     Width = 75
     Height = 25
     Action = actnPrev
     Anchors = [akRight, akBottom]
     TabOrder = 1
-    ExplicitLeft = 312
   end
   object btnNext: TButton
-    Left = 533
-    Top = 447
+    Left = 584
+    Top = 536
     Width = 75
     Height = 25
     Action = actnNext
     Anchors = [akRight, akBottom]
     TabOrder = 2
-    ExplicitLeft = 393
   end
   object dlgSelectFile: TOpenDialog
     Filter = 'Soap Webservice definition (*.wsdl;*.xml)|*.wsdl;*.xml'
