@@ -24,12 +24,16 @@ type
     alMain: TActionList;
     btnBatchEdit: TButton;
     btnCheck: TButton;
+    btnLoadMappings: TButton;
     btnNext: TButton;
     btnPrev: TButton;
+    btnSaveMappings: TButton;
     btnSelectFile: TButton;
     btnSelectFolder: TButton;
     btnTypesFindNonEdited: TButton;
     cbFilePerNamespace: TCheckBox;
+    dlgLoadMapping: TOpenDialog;
+    dlgSaveMapping: TSaveDialog;
     dlgSelectFile: TOpenDialog;
     dlgSelectFolder: TFileOpenDialog;
     edtAuthPassword: TEdit;
@@ -64,6 +68,8 @@ type
     procedure actnPrevUpdate(Sender: TObject);
     procedure btnBatchEditClick(Sender: TObject);
     procedure btnCheckClick(Sender: TObject);
+    procedure btnLoadMappingsClick(Sender: TObject);
+    procedure btnSaveMappingsClick(Sender: TObject);
     procedure btnSelectFileClick(Sender: TObject);
     procedure btnSelectFolderClick(Sender: TObject);
     procedure btnTypesFindNonEditedClick(Sender: TObject);
@@ -93,15 +99,17 @@ type
     FWSDLTypes: IWSDLTypeArray;
     procedure CheckDuplicatedTypeNames;
     procedure CheckStartPage;
+    function GetDefaultMappingInfoFilename: string;
     function GetDirectory: string;
     function GetIniFilename: string;
-    function GetMappingInfoFilename: string;
     function GetRelHdrDir: string;
     function GetWSDLType(aIndex: Integer): IWSDLType;
     procedure InitPreview;
     procedure InitTypeMapping;
+    procedure LoadMappingsFile(const aFilename: string);
     procedure LoadPreviousSettings;
     procedure SaveCurrentSettings;
+    procedure SaveToMappingsFile(const aFilename: string);
     procedure UpdateTypeEditor(aInit: boolean);
   protected
     procedure Loaded; override;
@@ -162,6 +170,22 @@ begin
     Result := Copy(aFullname, 1, iPos - 1)
   else
     Result := '';
+end;
+
+procedure AddMultilineErrorMessage(Log: TStrings; const aMessage:
+    string);
+var
+  sl: TStrings;
+begin
+  sl := TStringList.Create;
+  try
+    sl.Delimiter := #13;
+    sl.StrictDelimiter := True;
+    sl.DelimitedText := StringReplace(aMessage, #10, '', [rfReplaceAll]);
+    Log.AddStrings(sl);
+  finally
+    sl.Free;
+  end;
 end;
 
 { TValueListEditor }
@@ -296,6 +320,21 @@ end;
 procedure TfrmMain.btnCheckClick(Sender: TObject);
 begin
   CheckDuplicatedTypeNames;
+end;
+
+procedure TfrmMain.btnLoadMappingsClick(Sender: TObject);
+begin
+  if dlgLoadMapping.Execute then
+  begin
+    LoadMappingsFile(dlgLoadMapping.FileName);
+    dlgSaveMapping.FileName := dlgLoadMapping.FileName;
+  end;
+end;
+
+procedure TfrmMain.btnSaveMappingsClick(Sender: TObject);
+begin
+  if dlgSaveMapping.Execute then
+    SaveToMappingsFile(dlgSaveMapping.FileName);
 end;
 
 procedure TfrmMain.btnSelectFileClick(Sender: TObject);
@@ -479,7 +518,7 @@ begin
     except
       on E: Exception do
       begin
-        lbWritePreview.Items.Add('ERROR: ' + E.Message);
+        AddMultilineErrorMessage(lbWritePreview.Items, 'ERROR: ' + E.Message);
         raise;
       end;
     end else
@@ -501,6 +540,11 @@ begin
     LoadPreviousSettings;
 end;
 
+function TfrmMain.GetDefaultMappingInfoFilename: string;
+begin
+  Result := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) + 'Mappings.ini';
+end;
+
 function TfrmMain.GetDirectory: string;
 begin
   Result := IncludeTrailingPathDelimiter(edtOutputfolder.Text);
@@ -509,11 +553,6 @@ end;
 function TfrmMain.GetIniFilename: string;
 begin
   Result := ChangeFileExt(Application.ExeName, '.ini');
-end;
-
-function TfrmMain.GetMappingInfoFilename: string;
-begin
-  Result := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) + 'Mappings.ini';
 end;
 
 function TfrmMain.GetRelHdrDir: string;
@@ -594,6 +633,28 @@ begin
   pgctrlMain.ActivePageIndex := 0;
 end;
 
+procedure TfrmMain.LoadMappingsFile(const aFilename: string);
+begin
+  // Mapping information
+  with TIniFile.Create(aFilename) do
+  try
+    // Output filenames
+    ReadSectionValues(sSectionOutputfilenames, FOutputFilenames);
+
+    // Namespace mappings
+    ReadSectionValues(sSectionNamespaces, FNamespaceFilemappings);
+
+    // Type mappings
+    ReadSectionValues(sSectionTypes, FTypeMappingDefaults);
+  finally
+    Free;
+  end;
+
+  // Reset items which use mappings info
+  FImporter := nil;
+  edtURIChange(edtURI);
+end;
+
 procedure TfrmMain.LoadPreviousSettings;
 begin
   FSettingsLoaded := True;
@@ -619,21 +680,7 @@ begin
     Free;
   end;
 
-  // Mapping information
-  with TIniFile.Create(GetMappingInfoFilename) do
-  try
-    // Output filenames
-    ReadSectionValues(sSectionOutputfilenames, FOutputFilenames);
-    edtURIChange(edtURI);
-
-    // Type mappings
-    ReadSectionValues(sSectionTypes, FTypeMappingDefaults);
-
-    // Namespace mappings
-    ReadSectionValues(sSectionNamespaces, FNamespaceFilemappings);
-  finally
-    Free;
-  end;
+  LoadMappingsFile(GetDefaultMappingInfoFilename);
 end;
 
 procedure TfrmMain.pgctrlMainChange(Sender: TObject);
@@ -658,9 +705,6 @@ begin
 end;
 
 procedure TfrmMain.SaveCurrentSettings;
-var
-  list: TStrings;
-  I: Integer;
 begin
   with TIniFile.Create(GetIniFilename) do
   try
@@ -684,24 +728,34 @@ begin
     Free;
   end;
 
-  // Mapping information
-  with TMemIniFile.Create(GetMappingInfoFilename) do
+  SaveToMappingsFile(GetDefaultMappingInfoFilename);
+end;
+
+procedure TfrmMain.SaveToMappingsFile(const aFilename: string);
+var
+  list: TStrings;
+  I: Integer;
+begin
+  // Store/append/update mapping information
+  // - the file is never completely rewritten
+
+  with TMemIniFile.Create(aFilename) do
   try
     // Store webservice outputfilename based on source filename
     if (edtOutputFilename.Text > '') and (edtURI.Text > '') then
       WriteString(sSectionOutputfilenames, ExtractFileName(edtURI.Text), edtOutputFilename.Text);
+
+    // Store namespace mappings
+    list := vleTypeNamespaces.Strings;
+    for I := 0 to list.Count - 1 do
+      if (list.Names[I] > '') and (list.ValueFromIndex[I] > '') then
+        WriteString(sSectionNamespaces, list.Names[I], list.ValueFromIndex[I]);
 
     // Store typemapping info
     list := vleTypeNameMapping.Strings;
     for I := 0 to list.Count - 1 do
       if (list.Names[I] > '') and (list.ValueFromIndex[I] > '') then
         WriteString(sSectionTypes, list.Names[I], list.ValueFromIndex[I]);
-
-    // Stroe namespace mappings
-    list := vleTypeNamespaces.Strings;
-    for I := 0 to list.Count - 1 do
-      if (list.Names[I] > '') and (list.ValueFromIndex[I] > '') then
-        WriteString(sSectionNamespaces, list.Names[I], list.ValueFromIndex[I]);
 
     UpdateFile; // Don't forget this...
   finally

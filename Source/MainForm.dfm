@@ -182,6 +182,26 @@ object frmMain: TfrmMain
         TabOrder = 6
         OnChange = edtOutputFilenameChange
       end
+      object btnLoadMappings: TButton
+        Left = 3
+        Top = 353
+        Width = 85
+        Height = 25
+        Anchors = [akLeft, akBottom]
+        Caption = 'Load mappings'
+        TabOrder = 7
+        OnClick = btnLoadMappingsClick
+      end
+      object btnSaveMappings: TButton
+        Left = 94
+        Top = 353
+        Width = 85
+        Height = 25
+        Anchors = [akLeft, akBottom]
+        Caption = 'Save mappings'
+        TabOrder = 8
+        OnClick = btnSaveMappingsClick
+      end
     end
     object tbshtTypeMapping: TTabSheet
       Caption = 'Type mapping'
@@ -361,5 +381,21 @@ object frmMain: TfrmMain
     OnTimer = tmrUpdateFilterTimer
     Left = 304
     Top = 248
+  end
+  object dlgLoadMapping: TOpenDialog
+    DefaultExt = 'ini'
+    Filter = 'Mapping files (*.ini)|*.ini|All files (*.*)|*.*'
+    Options = [ofHideReadOnly, ofPathMustExist, ofFileMustExist, ofEnableSizing]
+    Title = 'Select mappings file to load'
+    Left = 40
+    Top = 320
+  end
+  object dlgSaveMapping: TSaveDialog
+    DefaultExt = 'ini'
+    Filter = 'Mapping files (*.ini)|*.ini|All files (*.*)|*.*'
+    Options = [ofOverwritePrompt, ofHideReadOnly, ofPathMustExist, ofEnableSizing]
+    Title = 'Specify where to save mappings file'
+    Left = 120
+    Top = 320
   end
 end
