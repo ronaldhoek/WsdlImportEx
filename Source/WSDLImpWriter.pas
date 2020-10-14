@@ -1055,7 +1055,7 @@ begin
   Result := StringReplace(Result, '..', '.', [rfReplaceAll]);
 
   for I := 1 to Length(Result) do
-    if not (Result[I] in sFileDelphiFilenameCharacters) then
+    if not CharInSet(Result[I], sFileDelphiFilenameCharacters) then
       Result[I] := '_';
 
 {$IFDEF DOTTED_UNIT_NAMES}
@@ -1068,7 +1068,7 @@ begin
 
     // Check partial strings starting with numeric character
     for I := 0 to s.Count - 1 do
-      if s[I][1] in ['0'..'9'] then
+      if CharInSet(s[I][1], ['0'..'9']) then
         s[I] := '_' + s[I];
 
     Result := s.DelimitedText;
