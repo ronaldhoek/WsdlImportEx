@@ -10,7 +10,8 @@ Second: created a GUI application with the following features
 - easelly import WSDL files/url using a GUI
 - change typenames
   - inclusing batch editor with filtering by namespace
-  - mappings are saved to files for use in next import
+  - mappings are saved to 'mappings' file for use in next import
+- change outputfilename per namespace
 - preview files to be created
 
 
