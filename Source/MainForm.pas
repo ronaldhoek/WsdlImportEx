@@ -85,8 +85,9 @@ type
   private
     FImporter: IWSDLImporter;
     FNamespaceFilemappings: TStrings;
+    FOutputFilenames: TStrings;
     FPreviewOK: Boolean;
-    FSettingLoaded: Boolean;
+    FSettingsLoaded: Boolean;
     FTypeMappingDefaults: TStrings;
     FWSDLImportInfo: TWSDLImportInfo;
     FWSDLTypes: IWSDLTypeArray;
@@ -94,6 +95,7 @@ type
     procedure CheckStartPage;
     function GetDirectory: string;
     function GetIniFilename: string;
+    function GetMappingInfoFilename: string;
     function GetRelHdrDir: string;
     function GetWSDLType(aIndex: Integer): IWSDLType;
     procedure InitPreview;
@@ -120,6 +122,10 @@ uses WSDLImpWriter, WSDLPasWriter, System.IniFiles, BachtEditForm,
   System.StrUtils, Winapi.ShellAPI;
 
 const
+  sNamespaceTypeSeparator = '$';
+
+  // Form state/position etc.
+  sSectionFormState = 'FormState';
   sIdentHeight = 'Height';
   sIdentWidth = 'Width';
   sIdentPosLeft = 'PosLeft';
@@ -127,17 +133,16 @@ const
   sIdentTypeNameColWidth = 'TypeNameColWidth';
   sIdentFilenameColWidth = 'FilenameColWidth';
   sIdentFilePerNamespace = 'FilePerNamespace';
-  sNamespaceTypeSeparator = '$';
 
-
-  sSectionFormState = 'FormState';
-
+  // Form user inputs
   sSectionStart = 'Start';
   sIdentURI = 'URI';
   sIdentOutputfolder = 'Outputfolder';
 
-  sSectionTypeMappingDefaults = 'TypeMappingDefaults';
-  sSectionNamespaceFilemappings = 'NamespaceFilemappings';
+  // Mapping info
+  sSectionOutputfilenames = 'Outputfilenames';
+  sSectionTypes = 'Types';
+  sSectionNamespaces = 'Namespaces';
 
 function isHTTP(const Name: string): boolean;
 const
@@ -391,6 +396,7 @@ end;
 
 constructor TfrmMain.Create(AOwner: TComponent);
 begin
+  FOutputFilenames := TStringList.Create;
   FTypeMappingDefaults := TStringList.Create;
   FNamespaceFilemappings := TStringList.Create;
   inherited;
@@ -398,6 +404,7 @@ end;
 
 destructor TfrmMain.Destroy;
 begin
+  FreeAndNil(FOutputFilenames);
   FreeAndNil(FTypeMappingDefaults);
   FreeAndNil(FNamespaceFilemappings);
   inherited;
@@ -415,8 +422,13 @@ begin
 end;
 
 procedure TfrmMain.edtURIChange(Sender: TObject);
+var
+  s: string;
 begin
   FImporter := nil;
+  s := FOutputFilenames.Values[ExtractFilename((Sender as TEdit).Text)];
+  if s > '' then
+    edtOutputFilename.Text := s;
 end;
 
 procedure TfrmMain.ExecuteWriter(aPreview: Boolean);
@@ -485,7 +497,7 @@ end;
 
 procedure TfrmMain.FormShow(Sender: TObject);
 begin
-  if not FSettingLoaded then
+  if not FSettingsLoaded then
     LoadPreviousSettings;
 end;
 
@@ -497,6 +509,11 @@ end;
 function TfrmMain.GetIniFilename: string;
 begin
   Result := ChangeFileExt(Application.ExeName, '.ini');
+end;
+
+function TfrmMain.GetMappingInfoFilename: string;
+begin
+  Result := IncludeTrailingPathDelimiter(ExtractFilePath(Application.ExeName)) + 'Mappings.ini';
 end;
 
 function TfrmMain.GetRelHdrDir: string;
@@ -579,8 +596,9 @@ end;
 
 procedure TfrmMain.LoadPreviousSettings;
 begin
-  FSettingLoaded := True;
+  FSettingsLoaded := True;
 
+  // Basic settings
   with TIniFile.Create(GetIniFilename) do
   try
     // Mainform placement
@@ -597,12 +615,22 @@ begin
     edtOutputfolder.Text := ReadString(sSectionStart, sIdentOutputfolder, '');
 
     cbFilePerNamespace.Checked := ReadBool(sSectionStart, sIdentFilePerNamespace, True);
+  finally
+    Free;
+  end;
+
+  // Mapping information
+  with TIniFile.Create(GetMappingInfoFilename) do
+  try
+    // Output filenames
+    ReadSectionValues(sSectionOutputfilenames, FOutputFilenames);
+    edtURIChange(edtURI);
 
     // Type mappings
-    ReadSectionValues(sSectionTypeMappingDefaults, FTypeMappingDefaults);
+    ReadSectionValues(sSectionTypes, FTypeMappingDefaults);
 
     // Namespace mappings
-    ReadSectionValues(sSectionNamespaceFilemappings, FNamespaceFilemappings);
+    ReadSectionValues(sSectionNamespaces, FNamespaceFilemappings);
   finally
     Free;
   end;
@@ -634,7 +662,7 @@ var
   list: TStrings;
   I: Integer;
 begin
-  with TMemIniFile.Create(GetIniFilename) do
+  with TIniFile.Create(GetIniFilename) do
   try
     // Mainform placement
     WriteInteger(sSectionFormState, sIdentPosTop , Self.Top);
@@ -651,15 +679,29 @@ begin
 
     WriteBool(sSectionStart, sIdentFilePerNamespace, cbFilePerNamespace.Checked);
 
-    // Update 'default' typemapping info
+    UpdateFile; // Just in case...
+  finally
+    Free;
+  end;
+
+  // Mapping information
+  with TMemIniFile.Create(GetMappingInfoFilename) do
+  try
+    // Store webservice outputfilename based on source filename
+    if (edtOutputFilename.Text > '') and (edtURI.Text > '') then
+      WriteString(sSectionOutputfilenames, ExtractFileName(edtURI.Text), edtOutputFilename.Text);
+
+    // Store typemapping info
     list := vleTypeNameMapping.Strings;
     for I := 0 to list.Count - 1 do
-      WriteString(sSectionTypeMappingDefaults, list.Names[I], list.ValueFromIndex[I]);
+      if (list.Names[I] > '') and (list.ValueFromIndex[I] > '') then
+        WriteString(sSectionTypes, list.Names[I], list.ValueFromIndex[I]);
 
-    // Namespace mappings
+    // Stroe namespace mappings
     list := vleTypeNamespaces.Strings;
     for I := 0 to list.Count - 1 do
-      WriteString(sSectionNamespaceFilemappings, list.Names[I], list.ValueFromIndex[I]);
+      if (list.Names[I] > '') and (list.ValueFromIndex[I] > '') then
+        WriteString(sSectionNamespaces, list.Names[I], list.ValueFromIndex[I]);
 
     UpdateFile; // Don't forget this...
   finally
