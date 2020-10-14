@@ -461,13 +461,9 @@ begin
 end;
 
 procedure TfrmMain.edtURIChange(Sender: TObject);
-var
-  s: string;
 begin
   FImporter := nil;
-  s := FOutputFilenames.Values[ExtractFilename((Sender as TEdit).Text)];
-  if s > '' then
-    edtOutputFilename.Text := s;
+  edtOutputFilename.Text := FOutputFilenames.Values[ExtractFilename((Sender as TEdit).Text)];
 end;
 
 procedure TfrmMain.ExecuteWriter(aPreview: Boolean);
