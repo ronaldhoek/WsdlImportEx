@@ -2,9 +2,11 @@ object frmMain: TfrmMain
   Left = 0
   Top = 0
   Caption = 'Import webservice'
-  ClientHeight = 480
-  ClientWidth = 619
+  ClientHeight = 411
+  ClientWidth = 584
   Color = clBtnFace
+  Constraints.MinHeight = 450
+  Constraints.MinWidth = 600
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -11
@@ -14,15 +16,15 @@ object frmMain: TfrmMain
   OnClose = FormClose
   OnShow = FormShow
   DesignSize = (
-    619
-    480)
+    584
+    411)
   PixelsPerInch = 96
   TextHeight = 13
   object pgctrlMain: TPageControl
     Left = 0
     Top = 0
-    Width = 619
-    Height = 480
+    Width = 584
+    Height = 411
     ActivePage = tbshtStart
     Align = alClient
     TabOrder = 0
@@ -31,8 +33,8 @@ object frmMain: TfrmMain
     object tbshtStart: TTabSheet
       Caption = 'Start'
       DesignSize = (
-        611
-        452)
+        576
+        383)
       object lblURI: TLabel
         Left = 3
         Top = 8
@@ -60,14 +62,14 @@ object frmMain: TfrmMain
       object edtURI: TEdit
         Left = 3
         Top = 24
-        Width = 574
+        Width = 485
         Height = 21
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 0
         OnChange = edtURIChange
       end
       object btnSelectFile: TButton
-        Left = 583
+        Left = 494
         Top = 24
         Width = 75
         Height = 22
@@ -79,13 +81,13 @@ object frmMain: TfrmMain
       object gbAuth: TGroupBox
         Left = 3
         Top = 51
-        Width = 655
+        Width = 566
         Height = 109
         Anchors = [akLeft, akTop, akRight]
         Caption = 'Authentication (URL only)'
         TabOrder = 2
         DesignSize = (
-          655
+          566
           109)
         object lblAuthUsername: TLabel
           Left = 8
@@ -114,7 +116,7 @@ object frmMain: TfrmMain
         object edtAuthUsername: TEdit
           Left = 112
           Top = 21
-          Width = 531
+          Width = 442
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 0
@@ -122,7 +124,7 @@ object frmMain: TfrmMain
         object edtAuthPassword: TEdit
           Left = 112
           Top = 48
-          Width = 531
+          Width = 442
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 1
@@ -130,7 +132,7 @@ object frmMain: TfrmMain
         object edtProxy: TEdit
           Left = 112
           Top = 75
-          Width = 531
+          Width = 442
           Height = 21
           Anchors = [akLeft, akTop, akRight]
           TabOrder = 2
@@ -139,13 +141,13 @@ object frmMain: TfrmMain
       object edtOutputfolder: TEdit
         Left = 3
         Top = 182
-        Width = 574
+        Width = 485
         Height = 21
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 3
       end
       object btnSelectFolder: TButton
-        Left = 583
+        Left = 494
         Top = 182
         Width = 75
         Height = 22
@@ -157,7 +159,7 @@ object frmMain: TfrmMain
       object gbOptions: TGroupBox
         Left = 4
         Top = 252
-        Width = 655
+        Width = 565
         Height = 42
         Anchors = [akLeft, akTop, akRight]
         Caption = 'Options'
@@ -174,7 +176,7 @@ object frmMain: TfrmMain
       object edtOutputFilename: TEdit
         Left = 3
         Top = 225
-        Width = 574
+        Width = 485
         Height = 21
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 6
@@ -185,8 +187,8 @@ object frmMain: TfrmMain
       Caption = 'Type mapping'
       ImageIndex = 1
       DesignSize = (
-        611
-        452)
+        576
+        383)
       object lblTypeMapping: TLabel
         Left = 3
         Top = 5
@@ -196,9 +198,9 @@ object frmMain: TfrmMain
       end
       object vleTypeNameMapping: TValueListEditor
         Left = 3
-        Top = 29
-        Width = 656
-        Height = 267
+        Top = 28
+        Width = 567
+        Height = 108
         Anchors = [akLeft, akTop, akRight, akBottom]
         KeyOptions = [keyUnique]
         TabOrder = 0
@@ -209,12 +211,12 @@ object frmMain: TfrmMain
         OnSetEditText = vleTypeNameMappingSetEditText
         ColWidths = (
           244
-          406)
+          317)
       end
       object stsTypeMapping: TStatusBar
         Left = 3
-        Top = 294
-        Width = 656
+        Top = 135
+        Width = 567
         Height = 18
         Align = alNone
         Anchors = [akLeft, akRight, akBottom]
@@ -223,7 +225,7 @@ object frmMain: TfrmMain
       end
       object btnBatchEdit: TButton
         Left = 3
-        Top = 512
+        Top = 353
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -233,8 +235,8 @@ object frmMain: TfrmMain
       end
       object lbFeedback: TListBox
         Left = 3
-        Top = 417
-        Width = 656
+        Top = 258
+        Width = 567
         Height = 89
         Anchors = [akLeft, akRight, akBottom]
         ItemHeight = 13
@@ -242,7 +244,7 @@ object frmMain: TfrmMain
       end
       object btnTypesFindNonEdited: TButton
         Left = 84
-        Top = 512
+        Top = 353
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -252,7 +254,7 @@ object frmMain: TfrmMain
       end
       object btnCheck: TButton
         Left = 165
-        Top = 512
+        Top = 353
         Width = 75
         Height = 25
         Anchors = [akLeft, akBottom]
@@ -261,7 +263,7 @@ object frmMain: TfrmMain
         OnClick = btnCheckClick
       end
       object edtFilter: TEdit
-        Left = 538
+        Left = 449
         Top = 2
         Width = 121
         Height = 21
@@ -272,8 +274,8 @@ object frmMain: TfrmMain
       end
       object vleTypeNamespaces: TValueListEditor
         Left = 3
-        Top = 312
-        Width = 656
+        Top = 153
+        Width = 567
         Height = 99
         Anchors = [akLeft, akRight, akBottom]
         KeyOptions = [keyUnique]
@@ -286,20 +288,20 @@ object frmMain: TfrmMain
         OnSetEditText = vleTypeNamespacesSetEditText
         ColWidths = (
           240
-          410)
+          321)
       end
     end
     object tbshtPreview: TTabSheet
       Caption = 'Preview'
       ImageIndex = 2
       DesignSize = (
-        611
-        452)
+        576
+        383)
       object lbWritePreview: TListBox
         Left = 3
         Top = 3
-        Width = 656
-        Height = 503
+        Width = 563
+        Height = 344
         Anchors = [akLeft, akTop, akRight, akBottom]
         ItemHeight = 13
         TabOrder = 0
@@ -307,8 +309,8 @@ object frmMain: TfrmMain
     end
   end
   object btnPrev: TButton
-    Left = 503
-    Top = 536
+    Left = 414
+    Top = 377
     Width = 75
     Height = 25
     Action = actnPrev
@@ -316,8 +318,8 @@ object frmMain: TfrmMain
     TabOrder = 1
   end
   object btnNext: TButton
-    Left = 584
-    Top = 536
+    Left = 495
+    Top = 377
     Width = 75
     Height = 25
     Action = actnNext
