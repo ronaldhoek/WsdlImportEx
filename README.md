@@ -12,7 +12,8 @@ Second: created a GUI application with the following features
   - inclusing batch editor with filtering by namespace
   - mappings are saved to 'mappings' file for use in next import
 - change outputfilename per namespace
-- preview files to be created
+- save/load mapping to/from a specific file
+- preview of files to be created
 
 
 WORK IN PROGRESS!!!
