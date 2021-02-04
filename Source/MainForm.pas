@@ -89,6 +89,7 @@ type
     procedure vleTypeNamespacesSetEditText(Sender: TObject; ACol, ARow: Integer;
         const Value: string);
   private
+    FClearingEditors: Boolean;
     FImporter: IWSDLImporter;
     FNamespaceFilemappings: TStrings;
     FOutputFilenames: TStrings;
@@ -99,6 +100,7 @@ type
     FWSDLTypes: IWSDLTypeArray;
     procedure CheckDuplicatedTypeNames;
     procedure CheckStartPage;
+    procedure ClearEditors;
     function GetDefaultMappingInfoFilename: string;
     function GetDirectory: string;
     function GetIniFilename: string;
@@ -130,6 +132,7 @@ uses WSDLImpWriter, WSDLPasWriter, System.IniFiles, BachtEditForm,
   System.StrUtils, Winapi.ShellAPI;
 
 const
+  sExt_WSDL = '.wsdl';
   sNamespaceTypeSeparator = '$';
 
   // Form state/position etc.
@@ -449,6 +452,17 @@ begin
   inherited;
 end;
 
+procedure TfrmMain.ClearEditors;
+begin
+  FClearingEditors := True;
+  try
+    vleTypeNameMapping.Strings.Clear;
+    vleTypeNamespaces.Strings.Clear;
+  finally
+    FClearingEditors := False;
+  end;
+end;
+
 procedure TfrmMain.edtFilterChange(Sender: TObject);
 begin
   tmrUpdateFilter.Enabled := False;
@@ -461,9 +475,14 @@ begin
 end;
 
 procedure TfrmMain.edtURIChange(Sender: TObject);
+var
+  sTargetFileName: string;
 begin
   FImporter := nil;
-  edtOutputFilename.Text := FOutputFilenames.Values[ExtractFilename((Sender as TEdit).Text)];
+  sTargetFileName := FOutputFilenames.Values[ExtractFilename((Sender as TEdit).Text)];
+  if SameText(ExtractFileExt(sTargetFileName), sExt_WSDL) then
+    SetLength(sTargetFileName, Length(sTargetFileName)- Length(sExt_WSDL));
+  edtOutputFilename.Text := sTargetFileName;
 end;
 
 procedure TfrmMain.ExecuteWriter(aPreview: Boolean);
@@ -577,12 +596,15 @@ var
 begin
   if FImporter = nil then
   try
-    vleTypeNameMapping.Strings.Clear;
-    vleTypeNamespaces.Strings.Clear;
+    ClearEditors;
     edtFilter.Clear;
     tmrUpdateFilter.Enabled := False;
 
-    OutFile := edtOutputFilename.Text;
+    if SameText(ExtractFileExt(edtOutputFilename.Text), sExt_WSDL) then
+      OutFile := edtOutputFilename.Text
+    else
+      OutFile := edtOutputFilename.Text + sExt_WSDL;
+
 //    { Default to Pascal }
 //    LangGen := PasGen;
 
@@ -617,8 +639,7 @@ begin
     UpdateTypeEditor(True);
   except
     FImporter := nil;
-    vleTypeNameMapping.Strings.Clear;
-    vleTypeNamespaces.Strings.Clear;
+    ClearEditors;
     Raise;
   end;
 end;
@@ -816,7 +837,7 @@ begin
 
     stsTypeMapping.SimpleText := 'Type count: ' + IntToStr(vleTypeNameMapping.Strings.Count);
   except
-    vleTypeNameMapping.Strings.Clear;
+    ClearEditors;
     raise;
   end;
 end;
@@ -824,22 +845,34 @@ end;
 procedure TfrmMain.vleTypeNameMappingGetEditText(Sender: TObject; ACol, ARow:
     Integer; var Value: string);
 begin
-  if (Value = '') and (ACol = 1) and (vleTypeNameMapping.Strings.Count >= ARow) then
+  if FClearingEditors then
+    Exit;
+
+  if (Value = '') and (ACol = 1) and ((Sender as TValueListEditor).Strings.Count >= ARow) then
     Value := GetWSDLType(ARow -1).LangName;
 end;
 
 procedure TfrmMain.vleTypeNameMappingSetEditText(Sender: TObject; ACol, ARow:
     Integer; const Value: string);
 begin
-  if (ACol = 1) and (vleTypeNameMapping.Strings.Count >= ARow) then
+  if FClearingEditors then
+    Exit;
+
+  if (ACol = 1) and ((Sender as TValueListEditor).Strings.Count >= ARow) then
     GetWSDLType(ARow - 1).LangName := Value;
 end;
 
 procedure TfrmMain.vleTypeNamespacesSetEditText(Sender: TObject; ACol, ARow:
     Integer; const Value: string);
+var
+  vle: TValueListEditor;
 begin
-  if (ACol = 1) and (vleTypeNamespaces.Strings.Count >= ARow) then
-    FNamespaceFilemappings.Values[vleTypeNamespaces.Keys[ARow]] := Value;
+  if FClearingEditors then
+    Exit;
+
+  vle := Sender as TValueListEditor;
+  if (ACol = 1) and (vle.Strings.Count >= ARow) then
+    FNamespaceFilemappings.Values[vle.Keys[ARow]] := Value;
 end;
 
 procedure TfrmMain.WriteFeedback(const Message: String;
