@@ -621,6 +621,7 @@ begin
     if XMLSchemaFile then
       Flag := Flag + [ifImportXMLSchema];
 
+    lbFeedback.Clear;
     FImporter := ImportWSDL(edtURI.Text, nil{Stream},
                            WriteFeedbackProc,
                            Flag,
@@ -816,7 +817,12 @@ begin
               wdsltype.LangName := s;
           end;
 
-          list.AddObject(sFullTypename + list.NameValueSeparator + wdsltype.LangName, Pointer(wdsltype) );
+          try
+            list.AddObject(sFullTypename + list.NameValueSeparator + wdsltype.LangName, Pointer(wdsltype) );
+          except
+            on E: Exception do
+              WriteFeedback('Error! %s - %s', [sFullTypename, E.Message]);
+          end;
         end;
 
         // Namespaces
